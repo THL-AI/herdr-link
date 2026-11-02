@@ -11,6 +11,7 @@ import type { CoreEvent } from "../src/core/Events.ts"
 import { CoreError, type HerdrCore } from "../src/core/HerdrCore.ts"
 import type { Terminal } from "../src/core/Methods.ts"
 import { ActionId, MessageId, RoomId, ThreadId } from "../src/protocol/Chat.ts"
+import { createServer } from "node:http"
 
 const agents: Record<string, Agent> = {
   claude: { template: "claude", emoji: "✳️", allow: ["1"], always: ["2"], deny: ["esc"], trust: ["y"] },
@@ -71,6 +72,11 @@ const setupWith = (extra: { readonly dashboardEvery?: Duration.Input; readonly m
           return Effect.succeed({ version })
         }
         if (method === "terminal.read") return Effect.succeed({ text: "line 1   \n```code```\n$ ready\n\n\n", complete: true, how: "screen" })
+        if (method === "terminal.put") {
+          return Queue.offer(coreCalls, { method, params }).pipe(
+            Effect.as({ path: `/state/files/${params.terminal}/${params.name}`, bytes: Buffer.from(params.data, "base64").length })
+          )
+        }
         if (method === "terminal.keys") return Queue.offer(coreCalls, { method, params }).pipe(Effect.as({ turn: 1 }))
         if (method === "terminal.send") {
           return Queue.offer(coreCalls, { method, params }).pipe(
@@ -663,6 +669,66 @@ describe("split tabs", () => {
       yield* Queue.offer(env.chatEvents, message("🐚 ls -la"))
       assert.deepStrictEqual((yield* Queue.take(env.coreCalls)).params, { terminal: "t2", text: "ls -la" })
     }))
+})
+
+describe("attachments", () => {
+  it.live("puts a screenshot beside the agent and tells it where", () =>
+    Effect.gen(function*() {
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+      const server = createServer((_, response) => response.end(png))
+      yield* Effect.acquireRelease(
+        Effect.callback<void>((resume) => {
+          server.listen(0, "127.0.0.1", () => resume(Effect.void))
+        }),
+        () => Effect.sync(() => server.close())
+      )
+      const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/image.png`
+
+      const env = yield* setup
+      yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+      yield* Queue.offer(env.chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      yield* Effect.all([env.take, env.take, env.take])
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "message.received",
+        adapter: "discord",
+        params: {
+          place: { kind: "thread", thread: ThreadId.make("thread-✳️main") },
+          message: MessageId.make("o1"),
+          text: "",
+          attachments: [{ name: "image.png", url, size: png.length, contentType: "image/png" }]
+        }
+      })
+      const put = yield* Queue.take(env.coreCalls)
+      assert.strictEqual(put.method, "terminal.put")
+      assert.deepStrictEqual([put.params.terminal, put.params.name], ["t1", "image.png"])
+      assert.deepStrictEqual(Buffer.from(put.params.data, "base64"), png)
+      assert.deepStrictEqual((yield* Queue.take(env.coreCalls)).params, {
+        terminal: "t1",
+        text: "[file: /state/files/t1/image.png]"
+      })
+    }).pipe(Effect.scoped))
+
+  it.live("refuses files over 8 MB without downloading them", () =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+      yield* Queue.offer(env.chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      yield* Effect.all([env.take, env.take, env.take])
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "message.received",
+        adapter: "discord",
+        params: {
+          place: { kind: "thread", thread: ThreadId.make("thread-✳️main") },
+          message: MessageId.make("o1"),
+          text: "look",
+          attachments: [{ name: "big.mov", url: "http://127.0.0.1:9/never", size: 9 * 1024 * 1024 }]
+        }
+      })
+      assert.deepStrictEqual((yield* Queue.take(env.coreCalls)).params, {
+        terminal: "t1",
+        text: "look\n[file: big.mov: too large (max 8 MB)]"
+      })
+    }).pipe(Effect.scoped))
 })
 
 describe("machines", () => {
