@@ -1,5 +1,6 @@
 /** `herdr-link init`: from a bot token to a running bridge, asking only what it cannot find out. */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
+import { hostname } from "node:os"
 import { basename, dirname } from "node:path"
 import * as Config from "./config.ts"
 import * as Discord from "./discord.ts"
@@ -90,6 +91,14 @@ export const init = async () => {
   }
   ok(`server ${guild.name}`)
 
+  // Two bridges can't share one bot (both would answer the DM and commands), and their
+  // categories would look the same: each computer gets its own bot and a name.
+  let machine: string | undefined
+  if (await confirm("  Do you run herdr-link on another computer with this server too?", false)) {
+    machine = await ask("  Name of this computer, shown in its category names:", hostname().split(".")[0])
+    note("Each computer needs its own bot: create another application for the other one.")
+  }
+
   step("3. Agents")
   const agents = Config.knownAgentNames.filter((name) => Probe.onPath(name))
   const shell = basename(process.env.SHELL || "/bin/sh")
@@ -99,7 +108,10 @@ export const init = async () => {
   const write = !existsSync(configFile) || (await confirm(`  ${configFile} exists. Replace it?`, false))
   if (write) {
     mkdirSync(dirname(configFile), { recursive: true })
-    writeFileSync(configFile, Config.renderConfig({ owner: owner!, guild: guild.id, agents, shell }))
+    writeFileSync(
+      configFile,
+      Config.renderConfig({ owner: owner!, guild: guild.id, agents, shell, ...(machine ? { machine } : {}) })
+    )
     ok(configFile)
   } else note(`kept ${configFile} (check owner and guild in it)`)
   Config.writeEnv(envFile, "DISCORD_TOKEN", key)

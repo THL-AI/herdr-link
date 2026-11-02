@@ -28,10 +28,13 @@ export const renderConfig = (options: {
   guild: string
   agents: ReadonlyArray<string>
   shell: string
+  machine?: string
 }) =>
   [
     `# herdr-link config. Secrets go in .env next to it, never here.
-
+${options.machine === undefined ? "" : `
+machine = "${options.machine}"   # this computer, added to category names (herdr-link runs on several)
+`}
 [adapters.discord]
 command = ["herdr-link-discord"]
 env = ["DISCORD_TOKEN"]

@@ -2,6 +2,8 @@
 # ~/.config/herdr-link/config.toml (or pass a path / set HERDR_LINK_CONFIG).
 # Secrets go in ~/.config/herdr-link/.env, never here.
 
+# machine = "laptop"   # only with herdr-link on several computers: added to category names
+
 [adapters.discord]
 command = ["herdr-link-discord"]   # argv of the adapter process
 env = ["DISCORD_TOKEN"]              # env vars the adapter may see (besides PATH, HOME, ...)

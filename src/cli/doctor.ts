@@ -51,6 +51,7 @@ export const doctor = async () => {
   }
   const config = parsed.success
   ok(configFile)
+  if (config.machine !== undefined) ok(`this computer is "${config.machine}" (in category names)`)
   for (const [name, agent] of Object.entries(config.agents ?? {})) {
     const program = agent.argv?.[0] ?? agent.template ?? name
     if (Probe.onPath(program)) ok(`agent ${name} (${program})`)

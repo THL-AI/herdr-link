@@ -45,6 +45,11 @@ export type Agent = typeof Agent.Type
 const Name = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]*$/u))
 
 export const Config = Schema.Struct({
+  /**
+   * This computer's name, added to room names ("api · laptop"). Set it when
+   * herdr-link runs on several computers with one chat server.
+   */
+  machine: Schema.optionalKey(Schema.NonEmptyString),
   adapters: Schema.Record(Name, AdapterSection),
   agents: Schema.optionalKey(Schema.Record(Name, Agent))
 })

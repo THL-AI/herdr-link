@@ -94,6 +94,24 @@ herdr-link run                   # in the foreground instead of the service
 
 </details>
 
+## More than one computer
+
+- **One herdr, several machines** (`hc machine add`): one herdr-link sees them
+  all; spaces on another machine get its name, like `api · build-box`.
+- **Separate computers, each with its own herdr:** run herdr-link on each,
+  **with its own bot** (another application in the Developer Portal; `herdr-link
+  init` sets it up). Two bridges sharing one bot would both answer the DM and
+  the commands. Answer yes when `init` asks about other computers: it sets
+  `machine` in the config, so each computer's categories read `api · laptop`,
+  `api · desktop`.
+
+## Split tabs
+
+A tab split into several panes keeps one channel. The panes sign their
+messages (`✳️ claude · …`). Reply to a message to answer that pane, start with
+an agent's emoji (`⚪ check the tests`) to pick an agent, or just write and
+the bot asks who it is for.
+
 ## Configuration
 
 See [`config.example.toml`](config.example.toml). Each `[agents.*]` entry has

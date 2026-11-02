@@ -21,6 +21,13 @@ describe("herdr-link init", () => {
       assert.deepStrictEqual(Config.adapterConfig(config.adapters.discord!), { owner: "1", guild: "2" })
     }))
 
+  it.effect("names this computer when herdr-link runs on several", () =>
+    Effect.gen(function*() {
+      const text = renderConfig({ owner: "1", guild: "2", agents: [], shell: "zsh", machine: "laptop" })
+      const config = yield* Config.parse(text, "config.toml")
+      assert.strictEqual(config.machine, "laptop")
+    }))
+
   it("keeps other lines of .env and makes it private", () => {
     const file = join(mkdtempSync(join(tmpdir(), "hl-env-")), "sub", ".env")
     writeEnv(file, "DISCORD_TOKEN", "a")

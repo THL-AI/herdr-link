@@ -17,6 +17,8 @@ const RawSpace = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   folder: Schema.String,
+  /** The herdr machine its terminals run on (`hc machine`); absent or null: this one. */
+  machine: Schema.optionalKey(Schema.NullOr(Schema.String)),
   tabs: Schema.Array(RawTab)
 })
 
@@ -34,6 +36,8 @@ export interface Space {
   /** The name herdr-app shows: its own, else `~` for home, else the folder's basename. */
   readonly name: string
   readonly folder: string
+  /** Set when the space lives on another herdr machine. */
+  readonly machine?: string
   readonly tabs: ReadonlyArray<Tab>
 }
 
@@ -65,6 +69,7 @@ export const decode = (value: unknown) =>
           id: space.id,
           name: displayName(space),
           folder: space.folder,
+          ...(space.machine ? { machine: space.machine } : {}),
           tabs: space.tabs.map((tab) => ({ id: tab.id, name: tab.name, terminals: terminalsOf(tab.root) }))
         }))
       )

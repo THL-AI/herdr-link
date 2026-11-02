@@ -140,11 +140,13 @@ describe("Spaces", () => {
             }]
           },
           { id: "sp2", name: "", folder: "/Users/x/Projects/api", tabs: [] },
-          { id: "sp3", name: "web", folder: "/Users/x/Projects/web", tabs: [] }
+          { id: "sp3", name: "web", folder: "/Users/x/Projects/web", machine: "build-box", tabs: [] }
         ]
       })
       assert.deepStrictEqual(spaces.map((s) => s.name), ["~", "api", "web"])
       assert.deepStrictEqual(spaces[0]!.tabs[0]!.terminals, ["t1", "t4"])
+      assert.strictEqual(spaces[2]!.machine, "build-box")
+      assert.isUndefined(spaces[0]!.machine)
       assert.deepStrictEqual(yield* Spaces.decode(null), [])
     }))
 })

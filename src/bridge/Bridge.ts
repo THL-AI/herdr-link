@@ -7,6 +7,9 @@
  *   agent's emoji.
  * - Owner → agent: a message in a tab's thread is typed into the tab's agent
  *   (`terminal.send`); attachments are put beside it first (`terminal.put`).
+ *   A split tab (several panes) shares one thread: the panes sign their
+ *   messages; a reply goes to the pane that wrote the message, a leading agent
+ *   emoji to that agent, anything else asks "Who is this for?".
  * - Agent → owner: the shared `Stop` hook brings the agent's reply, posted in
  *   the thread. A turn without a hook reply still gets "✅ Done", and
  *   `blocked` gets "⚠️ Needs you".
@@ -64,7 +67,7 @@ export const slug = (task: string) =>
   task.toLowerCase().match(/[\p{L}\p{N}]+/gu)?.slice(0, 3).join("-").slice(0, 24) || "task"
 
 /** Where threads of closed tabs wait before they are deleted. */
-const archiveName = "📦 archive"
+const archiveBase = "📦 archive"
 const keepArchived = 7 // days
 /** Below Discord's 50 channels per category. */
 const maxArchived = 45
@@ -107,12 +110,20 @@ export const run = Effect.fnUntraced(function*(options: {
   readonly core: HerdrCore["Service"]
   readonly hooks: Stream.Stream<HookMessage>
   readonly agents: Agents
+  /** This computer's name, from the config; added to room names. */
+  readonly machine?: string
   /** herdr-app: tabs and spaces live in the app, not in the core. */
   readonly app: HerdrApp
   /** How often the direct-conversation dashboard may be edited; off when omitted. */
   readonly dashboardEvery?: Duration.Input
 }) {
   const { chat, core, agents } = options
+  /** "api", "api · laptop" (this bridge's machine), or "api · build-box" (a space on another herdr machine). */
+  const roomName = (space: Spaces.Space) => {
+    const machine = space.machine ?? options.machine
+    return machine === undefined ? space.name : `${space.name} · ${machine}`
+  }
+  const archiveName = options.machine === undefined ? archiveBase : `${archiveBase} · ${options.machine}`
   /** When each terminal's last hook reply arrived (ms). */
   const lastReply = new Map<string, number>()
   const adapters = new Map<string, Capabilities>()
@@ -154,7 +165,7 @@ export const run = Effect.fnUntraced(function*(options: {
       for (const space of spaces) {
         const known = rooms[space.id]
         const ensured = yield* chat.call(adapter, "room.ensure", {
-          name: space.name,
+          name: roomName(space),
           ...(known === undefined ? {} : { room: RoomId.make(known) })
         })
         rooms[space.id] = ensured.room
@@ -164,7 +175,7 @@ export const run = Effect.fnUntraced(function*(options: {
           const result = yield* chat.call(adapter, "thread.ensure", {
             room: ensured.room,
             name: `${emoji ?? ""}${tab.name}`,
-            topic: `${space.name} / ${tab.name} — ${space.folder}`,
+            topic: `${roomName(space)} / ${tab.name} — ${space.folder}`,
             ...(entry === undefined ? {} : { thread: ThreadId.make(entry.thread) })
           })
           threads[tab.id] = emoji === undefined ? { thread: result.thread } : { thread: result.thread, emoji }
@@ -284,6 +295,42 @@ export const run = Effect.fnUntraced(function*(options: {
     return undefined
   }
 
+  // Split tabs: several panes (terminals) share one thread.
+
+  /** A tab's live terminals, in layout order. */
+  const liveTerminals = (tab: Spaces.Tab) =>
+    tab.terminals.flatMap((address) => {
+      const terminal = terminals.get(address)
+      return terminal !== undefined && terminal.state === "live" ? [terminal] : []
+    })
+
+  /** "✳️ claude", or "▫️ zsh" for a program that is no agent; numbered when two panes look alike. */
+  const paneLabel = (address: string) => {
+    const label = (a: string) => {
+      const terminal = terminals.get(a)
+      const agent = terminal === undefined ? undefined : agentOf(agents, terminal)
+      if (agent !== undefined) return `${agents[agent]!.emoji} ${agent}`
+      return `▫️ ${terminal?.foreground?.name ?? terminal?.argv[0]?.split("/").at(-1) ?? a}`
+    }
+    const own = label(address)
+    const tab = tabOf(address)
+    const alike = (tab === undefined ? [] : liveTerminals(tab)).filter((t) => label(t.address) === own)
+    return alike.length > 1 ? `${own} ${alike.findIndex((t) => t.address === address) + 1}` : own
+  }
+
+  /** Says which pane is speaking, when its tab has more than one. */
+  const speaker = (address: string, text: string) => {
+    const tab = tabOf(address)
+    return tab !== undefined && liveTerminals(tab).length > 1 ? `${paneLabel(address)} · ${text}` : text
+  }
+
+  /** Which pane posted which message, so a reply goes back to it. The latest ones only. */
+  const postedBy = new Map<string, string>()
+  const rememberPost = (message: string, address: string) => {
+    postedBy.set(message, address)
+    if (postedBy.size > 2000) postedBy.delete(postedBy.keys().next().value!)
+  }
+
   /**
    * Posts `text` in the thread of the tab holding this terminal, on every
    * adapter; `actions` go under the last part. Returns where it landed.
@@ -302,7 +349,12 @@ export const run = Effect.fnUntraced(function*(options: {
         yield* Effect.forEach(parts, (part, index) => {
           const withActions = actions !== undefined && capabilities.actions && index === parts.length - 1
           return chat.call(adapter, "message.post", { place, text: part, ...(withActions ? { actions } : {}) }).pipe(
-            Effect.tap(({ message }) => Effect.sync(() => posted.push({ adapter, place, message })))
+            Effect.tap(({ message }) =>
+              Effect.sync(() => {
+                posted.push({ adapter, place, message })
+                rememberPost(message, address)
+              })
+            )
           )
         }, { discard: true }).pipe(Effect.catch((error) => Effect.logWarning(`${adapter}: cannot post: ${error.message}`)))
       }
@@ -348,7 +400,7 @@ export const run = Effect.fnUntraced(function*(options: {
       if (open !== undefined) return
       const id = nextPrompt++
       const trust = isTrustQuestion(status?.msg)
-      const text = `🔐 Permission: ${status?.msg ?? "the agent asks for permission"}`
+      const text = speaker(address, `🔐 Permission: ${status?.msg ?? "the agent asks for permission"}`)
       const actions: Array<Action> = (["allow", "always", "deny"] as const)
         .filter((choice) => keysFor(address, choice, trust) !== undefined)
         .map((choice) => ({
@@ -457,11 +509,38 @@ export const run = Effect.fnUntraced(function*(options: {
       const s = yield* loadStore
       const tab = tabOfThread(s, adapter, params.place.thread)
       if (tab === undefined) return // not one of ours: the owner's other channels
-      const terminal = terminalOfTab(tab)
-      if (terminal === undefined) return yield* reply("No live terminal in this tab.")
+      const live = liveTerminals(tab)
+      if (live.length === 0) return yield* reply("No live terminal in this tab.")
 
+      // Which pane: the one whose message this replies to, the agent named by a leading
+      // emoji, the only one; else ask.
+      const repliedTo = params.replyTo === undefined ? undefined : postedBy.get(params.replyTo)
+      const named = agentFromName(params.text.trim())
+      const byEmoji = named === undefined ? undefined : live.find((t) => agentOf(agents, t) === named.agent)
+      const target = live.find((t) => t.address === repliedTo)?.address ??
+        byEmoji?.address ??
+        (live.length === 1 ? live[0]!.address : undefined)
+      if (target === undefined) return yield* askWhom(adapter, params, live.map((t) => t.address))
+      yield* deliver(adapter, params, target, byEmoji !== undefined && target === byEmoji.address ? named!.rest : params.text)
+    }).pipe(Effect.catch((error) => replyError(adapter, params, error)))
+
+  const replyError = (adapter: string, params: Params<AdapterToBridge["message.received"]>, error: Error) =>
+    chat.call(adapter, "message.post", {
+      place: params.place,
+      text: `⚠️ ${error instanceof CoreError ? describeCoreError(error) : error.message}`,
+      replyTo: params.message
+    }).pipe(Effect.ignore)
+
+  /** Types the owner's message (and files) into a terminal, then marks the message seen. */
+  const deliver = (
+    adapter: string,
+    params: Params<AdapterToBridge["message.received"]>,
+    terminal: string,
+    message: string
+  ) =>
+    Effect.gen(function*() {
       const files = yield* Effect.forEach(params.attachments, (a) => putAttachment(terminal, a))
-      const text = [params.text.trim(), ...files.map((f) => `[file: ${f}]`)].filter((p) => p !== "").join("\n")
+      const text = [message.trim(), ...files.map((f) => `[file: ${f}]`)].filter((p) => p !== "").join("\n")
       if (text === "") return
       yield* core.call("terminal.send", { terminal, text })
       yield* chat.call(adapter, "react", {
@@ -469,15 +548,46 @@ export const run = Effect.fnUntraced(function*(options: {
         message: MessageId.make(params.message),
         emoji: { kind: "unicode", value: "👀" }
       }).pipe(Effect.ignore)
-    }).pipe(
-      Effect.catch((error) =>
-        chat.call(adapter, "message.post", {
+    })
+
+  interface PendingSend {
+    readonly adapter: string
+    readonly params: Params<AdapterToBridge["message.received"]>
+  }
+  const pendingSends = new Map<number, PendingSend>()
+  let nextSend = 1
+
+  const askWhom = (adapter: string, params: Params<AdapterToBridge["message.received"]>, panes: ReadonlyArray<string>) =>
+    Effect.gen(function*() {
+      const id = nextSend++
+      pendingSends.set(id, { adapter, params })
+      yield* chat.call(adapter, "ask", {
+        place: params.place,
+        text: "Who is this for?",
+        choices: panes.map((address) => ({ id: ActionId.make(`send:${id}:${address}`), label: paneLabel(address) })) as never
+      })
+    })
+
+  const answerSend = (adapter: string, params: Params<AdapterToBridge["action.pressed"]>) =>
+    Effect.gen(function*() {
+      const match = /^send:(\d+):(.+)$/.exec(params.action)
+      if (match === null) return
+      const pending = pendingSends.get(Number(match[1]))
+      const address = match[2]!
+      const edit = (text?: string) =>
+        chat.call(adapter, "message.edit", {
           place: params.place,
-          text: `⚠️ ${error instanceof CoreError ? describeCoreError(error) : error.message}`,
-          replyTo: params.message
+          message: params.message,
+          actions: [],
+          ...(text === undefined ? {} : { text })
         }).pipe(Effect.ignore)
+      if (pending === undefined || terminals.get(address)?.state !== "live") return yield* edit()
+      pendingSends.delete(Number(match[1]))
+      yield* edit(`Who is this for? → ${paneLabel(address)}`)
+      yield* deliver(pending.adapter, pending.params, address, pending.params.text).pipe(
+        Effect.catch((error) => replyError(pending.adapter, pending.params, error))
       )
-    )
+    })
 
   // New tabs from the platform: a thread made by the owner in one of our rooms.
 
@@ -536,7 +646,7 @@ export const run = Effect.fnUntraced(function*(options: {
           [adapter]: { ...mine, threads: { ...mine.threads, [created.tab]: { thread, emoji: agent.emoji } } }
         }
       })
-      yield* chat.call(adapter, "message.post", { place, text: `${agent.emoji} ${agentName} is starting in ${space.name} / ${tabName}.` }).pipe(
+      yield* chat.call(adapter, "message.post", { place, text: `${agent.emoji} ${agentName} is starting in ${roomName(space)} / ${tabName}.` }).pipe(
         Effect.ignore
       )
     })
@@ -606,7 +716,7 @@ export const run = Effect.fnUntraced(function*(options: {
   const statusLines = () => {
     const lines: Array<string> = []
     for (const space of spaces) {
-      lines.push(`**${space.name}**`)
+      lines.push(`**${roomName(space)}**`)
       for (const tab of space.tabs) {
         const states = tab.terminals.map((address) => {
           const terminal = terminals.get(address)
@@ -679,7 +789,7 @@ export const run = Effect.fnUntraced(function*(options: {
       yield* chat.call(adapter, "ask", {
         place: params.place,
         text: question,
-        choices: spaces.slice(0, max).map((space) => ({ id: ActionId.make(`task:${id}:${space.id}`), label: space.name })) as never
+        choices: spaces.slice(0, max).map((space) => ({ id: ActionId.make(`task:${id}:${space.id}`), label: roomName(space) })) as never
       })
       return undefined
     })
@@ -711,7 +821,7 @@ export const run = Effect.fnUntraced(function*(options: {
       yield* edit(
         started._tag === "Failure"
           ? `${pending.question}\n→ ⚠️ ${started.failure.message}`
-          : `${pending.question}\n→ started in ${space.name} / ${name}; follow it in its channel.`
+          : `${pending.question}\n→ started in ${roomName(space)} / ${name}; follow it in its channel.`
       )
     })
 
@@ -757,10 +867,13 @@ export const run = Effect.fnUntraced(function*(options: {
       case "Stop":
         if (message.text === undefined || message.text.trim() === "") return Effect.void
         lastReply.set(message.terminal, Date.now())
-        return postToTab(message.terminal, message.text)
+        return postToTab(message.terminal, speaker(message.terminal, message.text))
       case "StopFailure":
         lastReply.set(message.terminal, Date.now())
-        return postToTab(message.terminal, `❌ The turn failed: ${message.error ?? message.text ?? "unknown error"}`)
+        return postToTab(
+          message.terminal,
+          speaker(message.terminal, `❌ The turn failed: ${message.error ?? message.text ?? "unknown error"}`)
+        )
       case "Notification":
         return Effect.void // permission prompts: next step
     }
@@ -803,8 +916,9 @@ export const run = Effect.fnUntraced(function*(options: {
           if (state === "blocked" && event.status?.kind === "permission") {
             return yield* openPrompt(event.address, event.status)
           }
-          const text = statusText(state, event.status)
-          if (text === undefined) return
+          const status = statusText(state, event.status)
+          if (status === undefined) return
+          const text = speaker(event.address, status)
           if (state !== "done") return yield* postToTab(event.address, text)
           // The hook's reply says more than "Done"; post the bare status only without one.
           const doneAt = Date.now()
@@ -860,6 +974,8 @@ export const run = Effect.fnUntraced(function*(options: {
           ? answerNewTab(event.adapter, event.params)
           : event.params.action.startsWith("task:")
           ? answerTask(event.adapter, event.params)
+          : event.params.action.startsWith("send:")
+          ? answerSend(event.adapter, event.params)
           : answerPrompt(event.adapter, event.params)
       case "thread.deleted":
         return threadDeleted(event.adapter, event.params.thread)

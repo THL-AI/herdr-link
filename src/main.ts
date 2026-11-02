@@ -22,6 +22,7 @@ const run = (hooks: Stream.Stream<Hooks.HookMessage>) => Effect.gen(function*() 
     core: yield* HerdrCore.HerdrCore,
     hooks,
     agents: config.agents ?? {},
+    ...(config.machine === undefined ? {} : { machine: config.machine }),
     dashboardEvery: "10 seconds",
     app: {
       closeTab: (id) => HerdrApp.closeTab(id).pipe(withSpawner),

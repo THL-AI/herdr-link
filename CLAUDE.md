@@ -80,6 +80,19 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
 - **Owner → agent:** a message in a tab's thread → `terminal.send` to the tab's
   agent terminal (attachments via `terminal.put` first), then 👀. `blocked` /
   `finished` errors are answered in the thread.
+- **Split tabs** (several panes in one tab) share the tab's thread. With more
+  than one live pane, the bridge signs each pane's messages ("✳️ claude ·
+  …", numbered when two look alike) and routes the owner's message: a reply →
+  the pane that posted the replied-to message (remembered in memory, last
+  2000), a leading agent emoji → that agent's pane (emoji stripped), only one
+  pane → it, else an `ask` "Who is this for?" with the panes.
+- **Machines:** a space on another herdr machine (`hc machine add`; the space's
+  `machine` in the `herdr-app` doc) has its room named `api · build-box`. With
+  herdr-link on several computers, each runs its own bot (two bridges on one
+  bot would both answer the DM and commands; a bot cannot see another bot's
+  private categories, so this is not detected) and sets `machine` in its
+  config: its rooms and its archive get that suffix. Room names with the
+  machine are also used in the dashboard, topics and quick-task choices.
 - **Agent → owner:** the hook's `Stop` reply goes to the thread. `done` without
   a hook reply within 4 s → "✅ Done"; `blocked` → "⚠️ Needs you".
 - **Permission prompts** (`blocked` + kind `permission`) → Allow / Allow

@@ -53,7 +53,7 @@ const capabilities = {
   maxActions: 25
 }
 
-const setupWith = (extra: { readonly dashboardEvery?: Duration.Input } = {}) => Effect.gen(function*() {
+const setupWith = (extra: { readonly dashboardEvery?: Duration.Input; readonly machine?: string } = {}) => Effect.gen(function*() {
   const docs = new Map<string, { value: unknown; version: number }>([["herdr-app", { value: layout, version: 1 }]])
   const coreEvents = yield* Queue.unbounded<CoreEvent>()
   const chatEvents = yield* Queue.unbounded<ChatEvent>()
@@ -571,6 +571,129 @@ describe("dashboard", () => {
       // Nothing changed: no edit.
       yield* TestClock.adjust("30 seconds")
       assert.strictEqual(yield* Queue.size(env.calls), 0)
+    }))
+})
+
+describe("split tabs", () => {
+  const split = {
+    spaces: [{
+      id: "sp1",
+      name: "api",
+      folder: "/p/api",
+      tabs: [{
+        id: "tb1",
+        name: "main",
+        root: {
+          type: "row",
+          id: "tb1",
+          children: [
+            { type: "block", id: "p1", content: { terminal: "t1" } },
+            { type: "block", id: "p2", content: { terminal: "t2" } }
+          ]
+        }
+      }]
+    }]
+  }
+  const start = Effect.gen(function*() {
+    const env = yield* setup
+    env.docs.set("herdr-app", { value: split, version: 1 })
+    yield* Queue.offer(env.coreEvents, {
+      _tag: "snapshot",
+      seq: 1,
+      terminals: [
+        terminal("t1", { template: "claude" }),
+        terminal("t2", { foreground: { pid: 2, name: "zsh", argv: ["zsh", "-l"], cwd: "/" } })
+      ]
+    })
+    yield* Queue.offer(env.chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+    yield* Effect.all([env.take, env.take]) // room, thread
+    yield* Effect.yieldNow
+    return env
+  })
+  const place = { kind: "thread" as const, thread: ThreadId.make("thread-✳️main") }
+  const message = (text: string, replyTo?: string): ChatEvent => ({
+    _tag: "message.received",
+    adapter: "discord",
+    params: {
+      place,
+      message: MessageId.make("o1"),
+      text,
+      attachments: [],
+      ...(replyTo === undefined ? {} : { replyTo: MessageId.make(replyTo) })
+    }
+  })
+
+  it.effect("asks who a plain message is for, then sends it there", () =>
+    Effect.gen(function*() {
+      const env = yield* start
+      yield* Queue.offer(env.chatEvents, message("run the tests"))
+      const ask = yield* env.take
+      assert.strictEqual(ask.params.text, "Who is this for?")
+      assert.deepStrictEqual(ask.params.choices, [
+        { id: "send:1:t1", label: "✳️ claude" },
+        { id: "send:1:t2", label: "🐚 shell" }
+      ])
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "action.pressed",
+        adapter: "discord",
+        params: { place, message: MessageId.make("q1"), action: ActionId.make("send:1:t2") }
+      })
+      assert.strictEqual((yield* env.take).params.text, "Who is this for? → 🐚 shell")
+      assert.deepStrictEqual(yield* Queue.take(env.coreCalls), {
+        method: "terminal.send",
+        params: { terminal: "t2", text: "run the tests" }
+      })
+      const seen = yield* env.take
+      assert.deepStrictEqual([seen.method, seen.params.message], ["react", "o1"])
+    }))
+
+  it.effect("signs the panes' messages, and a reply goes back to the pane that wrote it", () =>
+    Effect.gen(function*() {
+      const env = yield* start
+      yield* Queue.offer(env.hooks, { terminal: "t1", event: "Stop", text: "All green." })
+      const posted = yield* env.take
+      assert.strictEqual(posted.params.text, "✳️ claude · All green.")
+      yield* Queue.offer(env.chatEvents, message("now commit", "m1")) // the fake chat names every post m1
+      assert.deepStrictEqual((yield* Queue.take(env.coreCalls)).params, { terminal: "t1", text: "now commit" })
+    }))
+
+  it.effect("sends to the agent named by a leading emoji, without the emoji", () =>
+    Effect.gen(function*() {
+      const env = yield* start
+      yield* Queue.offer(env.chatEvents, message("🐚 ls -la"))
+      assert.deepStrictEqual((yield* Queue.take(env.coreCalls)).params, { terminal: "t2", text: "ls -la" })
+    }))
+})
+
+describe("machines", () => {
+  it.effect("adds this computer's name, or the herdr machine of a remote space, to room names", () =>
+    Effect.gen(function*() {
+      const env = yield* setupWith({ machine: "laptop" })
+      env.docs.set("herdr-app", {
+        value: {
+          spaces: [
+            { ...layout.spaces[0]!, tabs: [] },
+            { id: "sp2", name: "api", folder: "/srv/api", machine: "build-box", tabs: [] }
+          ]
+        },
+        version: 1
+      })
+      yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [] })
+      yield* Queue.offer(env.chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      assert.strictEqual((yield* env.take).params.name, "api · laptop")
+      assert.strictEqual((yield* env.take).params.name, "api · build-box")
+    }))
+
+  it.effect("keeps a separate archive per computer", () =>
+    Effect.gen(function*() {
+      const env = yield* setupWith({ machine: "laptop" })
+      yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [] })
+      yield* Queue.offer(env.chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      yield* Effect.all([env.take, env.take, env.take])
+      env.docs.set("herdr-app", { value: { spaces: [{ ...layout.spaces[0]!, tabs: [layout.spaces[0]!.tabs[0]!] }] }, version: 2 })
+      yield* Queue.offer(env.coreEvents, { _tag: "doc", seq: 2, name: "herdr-app", version: 2 })
+      yield* Effect.all([env.take, env.take]) // room and the remaining thread
+      assert.deepStrictEqual((yield* env.take).params, { name: "📦 archive · laptop" })
     }))
 })
 
