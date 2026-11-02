@@ -18,7 +18,10 @@ pnpm start            # the bridge in the foreground (= herdr-link run)
 
 The `herdr-link` CLI (`src/cli/`): `init` (setup wizard: token, intent, owner
 and guild found through the Discord API, agents on PATH, config + `.env`,
-hooks, service), `doctor`, `run`, `service install | uninstall | status |
+hooks, service), `doctor [--fix] [--yes]` (every check knows its fix: hooks,
+service, Message Content intent, `hc server start`, `init`; installing herdr
+through its official script `curl -fsSL https://releases.herdr.dev/core/install.sh | sh`
+(app: `.../app/install.sh`) only after asking), `run`, `service install | uninstall | status |
 logs` (launchd on macOS, a systemd user unit on Linux, both through the
 user's login shell with this Node), `hooks install | uninstall`. In a checkout
 the pnpm scripts `hooks:install`, `service:install`… call it.
@@ -68,6 +71,9 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
 - `src/adapters/discord/main.ts`: the Discord adapter, its own process.
 - `src/cli/`: the `herdr-link` command (`main.ts` dispatches; `init`,
   `doctor`, `service`, `hooks`, Discord REST for setup, local probes).
+- `docs/`: user docs (configuration, agents, writing an adapter,
+  troubleshooting). Keep them true to the code; the README stays chat-agnostic
+  (Discord is the built-in adapter, not the product).
 - `hooks/herdr-link-hook.mjs`: the shared agent hook (plain Node, fast). `bin/`:
   entry points runnable from anywhere (they register tsx and load
   `~/.config/herdr-link/.env`, or a `.env` in a checkout).
@@ -76,7 +82,9 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
 
 - **herdr is the source of truth.** A herdr space → a private room (Discord:
   a category only the owner and the bot see), each tab → a thread named
-  `<agent emoji><tab>`. Rooms and threads made by hand are never touched.
+  `<agent emoji><tab>`. Rooms and threads made by hand are never touched. An
+  adapter without `rooms` gets top-level threads named `<space> / <tab>`, and
+  a closed tab's thread is deleted (no archive).
 - **Owner → agent:** a message in a tab's thread → `terminal.send` to the tab's
   agent terminal (attachments via `terminal.put` first), then 👀. `blocked` /
   `finished` errors are answered in the thread.

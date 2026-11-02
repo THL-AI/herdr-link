@@ -154,7 +154,9 @@ export const run = Effect.fnUntraced(function*(options: {
   const syncAdapter = (adapter: string) =>
     Effect.gen(function*() {
       const capabilities = adapters.get(adapter)
-      if (capabilities === undefined || !capabilities.rooms) return
+      if (capabilities === undefined) return
+      // Without rooms, every tab is a top-level thread named after its space too.
+      const withRooms = capabilities.rooms
       const s = yield* loadStore
       const before = s.state()
       const mine = before.adapters[adapter] ?? Store.emptyAdapter
@@ -164,17 +166,19 @@ export const run = Effect.fnUntraced(function*(options: {
 
       for (const space of spaces) {
         const known = rooms[space.id]
-        const ensured = yield* chat.call(adapter, "room.ensure", {
-          name: roomName(space),
-          ...(known === undefined ? {} : { room: RoomId.make(known) })
-        })
-        rooms[space.id] = ensured.room
+        const room = withRooms
+          ? (yield* chat.call(adapter, "room.ensure", {
+            name: roomName(space),
+            ...(known === undefined ? {} : { room: RoomId.make(known) })
+          })).room
+          : undefined
+        if (room !== undefined) rooms[space.id] = room
         for (const tab of space.tabs) {
           const entry = threads[tab.id]
           const emoji = emojiOfTab(tab) ?? entry?.emoji
           const result = yield* chat.call(adapter, "thread.ensure", {
-            room: ensured.room,
-            name: `${emoji ?? ""}${tab.name}`,
+            ...(room === undefined ? {} : { room }),
+            name: withRooms ? `${emoji ?? ""}${tab.name}` : `${emoji ?? ""}${roomName(space)} / ${tab.name}`,
             topic: `${roomName(space)} / ${tab.name} — ${space.folder}`,
             ...(entry === undefined ? {} : { thread: ThreadId.make(entry.thread) })
           })
@@ -189,6 +193,12 @@ export const run = Effect.fnUntraced(function*(options: {
         for (const [tabId, entry] of Object.entries(threads)) {
           if (liveTabs.has(tabId)) continue
           delete threads[tabId]
+          if (!withRooms) {
+            // Nowhere to archive it: the thread goes now.
+            yield* chat.call(adapter, "thread.delete", { thread: ThreadId.make(entry.thread) }).pipe(Effect.ignore)
+            yield* Effect.logInfo(`deleted the thread of closed tab ${tabId}`)
+            continue
+          }
           const archiveRoom = yield* chat.call(adapter, "room.ensure", {
             name: archiveName,
             ...(archive.room === undefined ? {} : { room: RoomId.make(archive.room) })

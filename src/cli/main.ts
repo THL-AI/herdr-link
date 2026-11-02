@@ -11,7 +11,7 @@ import * as Service from "./service.ts"
 const usage = `herdr-link: your herdr agents in a chat app
 
   herdr-link init                 set it up (bot, config, hooks, service)
-  herdr-link doctor               check every piece
+  herdr-link doctor [--fix]       check every piece; --fix repairs what it can
   herdr-link run [config.toml]    run the bridge in the foreground
   herdr-link service install | uninstall | status | logs
   herdr-link hooks install | uninstall
@@ -27,9 +27,12 @@ const main = async () => {
     }
     case "init":
       return init()
-    case "doctor":
-      process.exitCode = (await doctor()) === 0 ? 0 : 1
+    case "doctor": {
+      const flags = [sub, ...rest]
+      const left = await doctor({ fix: flags.includes("--fix"), yes: flags.includes("--yes") || flags.includes("-y") })
+      process.exitCode = left === 0 ? 0 : 1
       return
+    }
     case "hooks":
       if (sub !== "install" && sub !== "uninstall") break
       for (const line of Hooks.install(sub === "uninstall")) ok(line)
@@ -50,7 +53,6 @@ const main = async () => {
   }
   console.log(usage)
   if (command !== "help" && command !== "--help" && command !== "-h") process.exitCode = 1
-  void rest
 }
 
 main().catch((error) => {

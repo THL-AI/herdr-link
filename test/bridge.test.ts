@@ -731,6 +731,27 @@ describe("attachments", () => {
     }).pipe(Effect.scoped))
 })
 
+describe("adapters without rooms", () => {
+  it.effect("makes top-level threads named after space and tab, and deletes them when the tab closes", () =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "adapter.connected",
+        adapter: "plain",
+        info: { name: "plain", version: "0" },
+        capabilities: { ...capabilities, rooms: false }
+      })
+      const first = yield* env.take
+      assert.deepStrictEqual([first.method, first.params.name, first.params.room], ["thread.ensure", "✳️api / main", undefined])
+      yield* env.take
+      env.docs.set("herdr-app", { value: { spaces: [{ ...layout.spaces[0]!, tabs: [layout.spaces[0]!.tabs[0]!] }] }, version: 2 })
+      yield* Queue.offer(env.coreEvents, { _tag: "doc", seq: 2, name: "herdr-app", version: 2 })
+      yield* env.take // the remaining tab
+      assert.deepStrictEqual(yield* env.take, { method: "thread.delete", params: { thread: "thread-api / Shell Tab" } })
+    }))
+})
+
 describe("machines", () => {
   it.effect("adds this computer's name, or the herdr machine of a remote space, to room names", () =>
     Effect.gen(function*() {
