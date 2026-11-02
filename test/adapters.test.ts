@@ -45,6 +45,18 @@ describe("adapter processes", () => {
       assert.strictEqual((yield* take)._tag, "adapter.connected")
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)), 15_000)
 
+  it.live("fails a call the adapter never answers, and keeps going", () =>
+    Effect.gen(function*() {
+      const chat = yield* Adapters.make({ adapters: { fake: section() }, commands: [], callTimeout: "300 millis" })
+      const events = yield* Stream.toPull(chat.events)
+      yield* events // adapter.connected
+      const error = yield* chat.call("fake", "message.post", { place: direct, text: "hang" }).pipe(Effect.flip)
+      assert.strictEqual(error._tag, "RpcError")
+      assert.include(error.message, "got no answer")
+      const posted = yield* chat.call("fake", "message.post", { place: direct, text: "after" })
+      assert.strictEqual(posted.message, "1")
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)), 15_000)
+
   it.live("treats a rejected config as fatal", () =>
     Effect.gen(function*() {
       const error = yield* connect({

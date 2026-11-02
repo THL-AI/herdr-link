@@ -5,6 +5,7 @@ import { createInterface } from "node:readline"
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`)
 const notify = (method, params) => write({ method, params })
 let config = {}
+const HANG = Symbol("hang")
 
 const handlers = {
   hello(params) {
@@ -21,6 +22,7 @@ const handlers = {
     }
   },
   "message.post"({ place, text }) {
+    if (text === "hang") return HANG // never answer: a stuck adapter
     if (text === "exit") setTimeout(() => process.exit(1), 10)
     if (text === "env") {
       const seen = ["FAKE_TOKEN", "OTHER_SECRET"].filter((key) => process.env[key] !== undefined)
@@ -37,7 +39,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   const handler = handlers[message.method]
   try {
     if (!handler) throw { code: -32601, message: `unknown method ${message.method}` }
-    write({ id: message.id, result: handler(message.params) })
+    const result = handler(message.params)
+    if (result !== HANG) write({ id: message.id, result })
   } catch (error) {
     write({ id: message.id, error: { code: error.code ?? -32603, message: error.message ?? String(error) } })
   }

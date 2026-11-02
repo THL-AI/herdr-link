@@ -222,4 +222,9 @@ Node 24, pnpm, TypeScript 7 (`tsc --noEmit`, strict,
 
 Discord limits: 2000 chars per message, ~5 messages / 5 s per channel, 500
 channels per guild, 50 per category, **2 renames per channel per 10 minutes**
-(rename only on a real change). `CHANNEL_CREATE` has no author.
+(rename only on a real change). `CHANNEL_CREATE` has no author. discord.js
+queues within limits; waits over 5 s are refused (`rest.rejectOnRateLimit`), and
+a refused rename or topic is skipped with a log line (the next sync retries),
+so nothing holds the bridge's single loop. Every bridge → adapter call also
+times out after 30 s (`callTimeout` in `chat/Adapters.ts`). Gateway identifies
+(1000 a day) happen once per adapter start; resumes don't count.

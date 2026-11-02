@@ -60,19 +60,44 @@ const maxActions = 25
 const rpcError = (code: number, message: string) => new Peer.RpcError({ code, message })
 
 /** Runs a discord.js call, turning its failures into JSON-RPC errors. */
+/** Rate limits longer than this fail at once instead of holding the call (see the client's `rest` options). */
+const longestWait = 5000
+
+/** discord.js's RateLimitError, thrown for waits over `longestWait`. */
+const isRateLimited = (error: unknown): error is { readonly timeToReset: number; readonly retryAfter: number } =>
+  error instanceof Error && error.name === "RateLimitError"
+
+const toRpcError = (what: string, error: unknown): Peer.RpcError => {
+  if (error instanceof Peer.RpcError) return error
+  if (error instanceof DiscordAPIError) {
+    // 10003 Unknown Channel, 10008 Unknown Message
+    const notFound = error.code === 10003 || error.code === 10008
+    return rpcError(notFound ? ErrorCode.NotFound : ErrorCode.InternalError, `${what}: ${error.message}`)
+  }
+  if (isRateLimited(error)) {
+    return rpcError(ErrorCode.InternalError, `${what}: rate limited by Discord for ${Math.ceil(error.timeToReset / 1000)} s`)
+  }
+  return rpcError(ErrorCode.InternalError, `${what}: ${String(error)}`)
+}
+
+/** Runs a discord.js call, turning its failures into JSON-RPC errors. */
 const discord = <A>(what: string, run: () => Promise<A>) =>
-  Effect.tryPromise({
-    try: run,
-    catch: (error) => {
-      if (error instanceof Peer.RpcError) return error
-      if (error instanceof DiscordAPIError) {
-        // 10003 Unknown Channel, 10008 Unknown Message
-        const notFound = error.code === 10003 || error.code === 10008
-        return rpcError(notFound ? ErrorCode.NotFound : ErrorCode.InternalError, `${what}: ${error.message}`)
-      }
-      return rpcError(ErrorCode.InternalError, `${what}: ${String(error)}`)
-    }
-  })
+  Effect.tryPromise({ try: run, catch: (error) => toRpcError(what, error) })
+
+/**
+ * For cosmetic changes Discord limits hard (a channel's name: twice per ten
+ * minutes): when rate limited, skip it with a log line; the next sync, which
+ * sees the old name, tries again.
+ */
+const postponable = (what: string, run: () => Promise<unknown>) =>
+  Effect.tryPromise({ try: run, catch: (error) => error }).pipe(
+    Effect.asVoid,
+    Effect.catch((error) =>
+      isRateLimited(error)
+        ? Effect.logWarning(`${what}: rate limited by Discord, postponed (${Math.ceil(error.timeToReset / 1000)} s)`)
+        : Effect.fail(toRpcError(what, error))
+    )
+  )
 
 /** Names compared the way Discord may store them (emoji variation selectors dropped). */
 const sameName = (a: string, b: string) => a.replace(/\uFE0F/g, "") === b.replace(/\uFE0F/g, "")
@@ -89,7 +114,10 @@ const client = new Client({
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.DirectMessageReactions
   ],
-  partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User]
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User],
+  // Don't hold a call for minutes behind a rate limit (a third rename in ten minutes):
+  // fail it instead, so the bridge keeps going.
+  rest: { rejectOnRateLimit: (limit) => Math.max(limit.retryAfter, limit.sublimitTimeout, limit.timeToReset) > longestWait }
 })
 
 interface Session {
@@ -295,7 +323,7 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
           Effect.catch(() => Effect.succeed(null))
         )
         if (existing !== null && existing.type === ChannelType.GuildCategory) {
-          if (existing.name !== name) yield* discord("rename room", () => existing.setName(name))
+          if (existing.name !== name) yield* postponable("rename room", () => existing.setName(name))
           return { room, created: false }
         }
       }
@@ -321,10 +349,10 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
           }
           // Discord allows two renames per channel per ten minutes: rename only on a real change.
           if (wanted !== undefined && sameName(channel.name, wanted) === false) {
-            yield* discord("rename thread", () => channel.setName(wanted))
+            yield* postponable("rename thread", () => channel.setName(wanted))
           }
           if (topic !== undefined && (channel.topic ?? "") !== topic) {
-            yield* discord("set topic", () => channel.setTopic(topic))
+            yield* postponable("set topic", () => channel.setTopic(topic))
           }
           return { thread, created: false }
         }

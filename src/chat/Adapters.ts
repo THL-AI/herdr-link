@@ -13,6 +13,9 @@ import { type Handlers, RpcError } from "../protocol/Peer.ts"
 import { AdapterFailed, type Connection, connect } from "./AdapterProcess.ts"
 import { AdapterUnavailable, Chat, type ChatError, type ChatEvent, type OwnerEvent } from "./Chat.ts"
 
+/** How long the bridge waits for one call to an adapter. */
+const defaultCallTimeout = Duration.seconds(30)
+
 /** How long an adapter waits for the core to answer a command. */
 const commandTimeout = Duration.minutes(1)
 
@@ -25,7 +28,10 @@ const restartSchedule = Schedule.min([Schedule.exponential("1 second"), Schedule
 export const make = Effect.fnUntraced(function*(options: {
   readonly adapters: Readonly<Record<string, AdapterSection>>
   readonly commands: ReadonlyArray<CommandSpec>
+  /** How long one call may take before it fails, so a stuck adapter can't hold the bridge. */
+  readonly callTimeout?: Duration.Input
 }) {
+  const callTimeout = Duration.fromInputUnsafe(options.callTimeout ?? defaultCallTimeout)
   const events = yield* Queue.unbounded<ChatEvent>()
   const connections = new Map<string, Connection>()
 
@@ -98,7 +104,18 @@ export const make = Effect.fnUntraced(function*(options: {
         const connection = connections.get(adapter)
         return connection === undefined
           ? Effect.fail(new AdapterUnavailable({ adapter }))
-          : connection.peer.request(method, params)
+          : connection.peer.request(method, params).pipe(
+            Effect.timeoutOrElse({
+              duration: callTimeout,
+              orElse: () =>
+                Effect.fail(
+                  new RpcError({
+                    code: ErrorCode.InternalError,
+                    message: `${adapter}: ${method} got no answer in ${Duration.format(callTimeout)}`
+                  })
+                )
+            })
+          )
       }),
     events: Stream.fromQueue(events)
   })
