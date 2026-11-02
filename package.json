@@ -50,7 +50,8 @@
     "hooks:uninstall": "node bin/herdr-link.mjs hooks uninstall",
     "service:install": "node bin/herdr-link.mjs service install",
     "service:uninstall": "node bin/herdr-link.mjs service uninstall",
-    "service:status": "node bin/herdr-link.mjs service status"
+    "service:status": "node bin/herdr-link.mjs service status",
+    "site": "node site/build.mjs"
   },
   "dependencies": {
     "@effect/platform-node": "^4.1.2",
@@ -62,6 +63,7 @@
     "@effect/language-service": "^0.87.5",
     "@effect/vitest": "^4.1.2",
     "@types/node": "^24.19.2",
+    "marked": "^18.1.2",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

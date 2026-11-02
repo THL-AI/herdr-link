@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>herdr-link: your herdr agents, in your chat app</title>
+  <meta name="description" content="Steer the coding agents running in herdr from your phone: their replies, permission prompts with Allow / Deny, new tabs, in the chat app you already use. Discord built in, any chat through adapters.">
+  <meta property="og:title" content="herdr-link">
+  <meta property="og:description" content="Your herdr agents, in your chat app.">
+  <meta property="og:image" content="https://raw.githubusercontent.com/THL-AI/herdr-link/main/assets/logo-1024.png">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --bg: #0e0f11;
+      --surface: #16181b;
+      --raised: #1f2125;
+      --line: #2b2e33;
+      --text: #f3f3f4;
+      --soft: #c4c7cd;
+      --muted: #8a8e96;
+      --accent: #e8912a;
+      --accent-ink: #0e0f11;
+      --ok: #4ade80;
+      --danger: #f87171;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color-scheme: dark;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f5f2;
+        --surface: #ffffff;
+        --raised: #efeee9;
+        --line: #dedcd6;
+        --text: #16181b;
+        --soft: #3d4046;
+        --muted: #6b6f77;
+        --accent: #c76f0b;
+        --accent-ink: #ffffff;
+        --ok: #15803d;
+        --danger: #b91c1c;
+        color-scheme: light;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 17px/1.6 var(--sans);
+    }
+    a { color: inherit; }
+    code, pre { font-family: var(--mono); }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+    /* grid and flex children may shrink below their content (long code lines scroll instead) */
+    .hero > *, .split > *, .flow > *, .grid > *, .docs > *, .install code { min-width: 0; }
+
+    /* top */
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; letter-spacing: -0.01em; }
+    .brand img { width: 32px; height: 32px; }
+    nav .links { display: flex; gap: 22px; font-size: 15px; }
+    nav .links a { color: var(--soft); text-decoration: none; }
+    nav .links a:hover { color: var(--text); }
+
+    /* hero */
+    .hero { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; padding: 48px 0 80px; }
+    .eyebrow { color: var(--accent); font: 600 14px/1 var(--mono); letter-spacing: 0.02em; }
+    h1 { font-size: clamp(38px, 5.4vw, 60px); line-height: 1.05; letter-spacing: -0.03em; margin: 16px 0 20px; }
+    .lead { color: var(--soft); font-size: 19px; max-width: 34em; margin: 0 0 32px; }
+    .install { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 14px 14px 18px; max-width: 520px; }
+    .install code { flex: 1; font-size: 15px; white-space: nowrap; overflow-x: auto; }
+    .install code .p { color: var(--muted); user-select: none; }
+    .copy { background: var(--raised); color: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font: 600 13px var(--sans); cursor: pointer; }
+    .copy:hover { color: var(--text); }
+    .then { color: var(--muted); font-size: 15px; margin: 12px 0 0; }
+    .then code { color: var(--soft); }
+    .ctas { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px; text-decoration: none; border: 1px solid var(--line); background: var(--surface); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+    /* phone */
+    .phone { justify-self: center; width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--line); border-radius: 36px; padding: 14px; box-shadow: 0 30px 80px -30px rgba(0,0,0,.55); }
+    .screen { background: var(--bg); border-radius: 26px; overflow: hidden; border: 1px solid var(--line); }
+    .chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .chat-head .hash { color: var(--muted); font-weight: 700; }
+    .chat-head .room { color: var(--muted); font-size: 13px; margin-left: auto; font-family: var(--mono); }
+    .msgs { padding: 14px 14px 18px; display: flex; flex-direction: column; gap: 12px; font-size: 14.5px; line-height: 1.45; }
+    .msg { display: flex; gap: 10px; }
+    .avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+    .avatar.you { background: #3b82f6; color: white; }
+    .avatar.bot img { width: 30px; height: 30px; border-radius: 50%; }
+    .who { font-weight: 700; font-size: 13px; }
+    .who span { color: var(--muted); font-weight: 500; margin-left: 6px; }
+    .bubble { color: var(--soft); }
+    .bubble code { background: var(--raised); padding: 1px 5px; border-radius: 5px; font-size: 12.5px; color: var(--text); }
+    .reaction { display: inline-block; margin-top: 4px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 0 7px; font-size: 12px; }
+    .buttons { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .buttons b { font-size: 12.5px; padding: 5px 10px; border-radius: 7px; color: white; font-weight: 600; }
+    .buttons .allow { background: #16a34a; }
+    .buttons .always { background: #4f46e5; }
+    .buttons .deny { background: #dc2626; }
+    .buttons .pressed { outline: 2px solid var(--text); outline-offset: 1px; }
+
+    /* sections */
+    section { padding: 72px 0; border-top: 1px solid var(--line); }
+    h2 { font-size: clamp(28px, 3.4vw, 38px); letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 12px; }
+    .sub { color: var(--soft); margin: 0 0 40px; max-width: 40em; }
+
+    .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 16px; align-items: stretch; }
+    .node { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+    .node h3 { margin: 0 0 8px; font-size: 18px; }
+    .node p { margin: 0; color: var(--soft); font-size: 15px; }
+    .node.mid { border-color: var(--accent); }
+    .node .tag { font: 600 12px var(--mono); color: var(--accent); }
+    .arrow { align-self: center; color: var(--muted); font: 20px var(--mono); text-align: center; }
+
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+    .card .icon { font-size: 22px; }
+    .card h3 { margin: 10px 0 6px; font-size: 17px; }
+    .card p { margin: 0; color: var(--soft); font-size: 15px; }
+
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+    pre { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin: 0; font-size: 13px; line-height: 1.6; overflow-x: auto; color: var(--soft); }
+    pre .k { color: var(--accent); }
+    pre .c { color: var(--muted); }
+    ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+    ul.plain li { color: var(--soft); padding-left: 26px; position: relative; }
+    ul.plain li::before { content: "→"; position: absolute; left: 0; color: var(--accent); font-family: var(--mono); }
+    ul.plain strong { color: var(--text); }
+
+    .docs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .docs a { text-decoration: none; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+    .docs a:hover { border-color: var(--accent); }
+    .docs strong { display: block; margin-bottom: 4px; }
+    .docs span { color: var(--muted); font-size: 14px; }
+
+    footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 14px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    footer a { color: var(--soft); }
+
+    @media (max-width: 880px) {
+      .hero, .split { grid-template-columns: 1fr; gap: 40px; }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      .grid { grid-template-columns: 1fr 1fr; }
+      .docs { grid-template-columns: 1fr 1fr; }
+      nav .links a.hide-sm { display: none; }
+    }
+    @media (max-width: 560px) {
+      .wrap { padding: 0 16px; }
+      .install { padding-left: 14px; }
+      .install code { font-size: 13px; }
+      .install code .p { display: none; }
+      .grid, .docs { grid-template-columns: 1fr; }
+      body { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav>
+      <a class="brand" href="./"><img src="logo.svg" alt="">herdr-link</a>
+      <div class="links">
+        <a class="hide-sm" href="#how">How it works</a>
+        <a class="hide-sm" href="#adapters">Adapters</a>
+        <a href="docs/configuration.html">Docs</a>
+        <a href="https://github.com/THL-AI/herdr-link">GitHub</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div>
+        <div class="eyebrow">a sidecar for herdr</div>
+        <h1>Your herdr agents, in your chat app.</h1>
+        <p class="lead">Every herdr space becomes a private room, every tab a thread. Your agents' replies,
+          "done" and "needs you" reach your phone; permission prompts come with Allow and Deny; a new
+          thread opens a new tab. Discord is built in, and any chat app plugs in as an adapter.</p>
+        <div class="install">
+          <code id="cmd"><span class="p">$ </span>npm install -g @thl-ai/herdr-link</code>
+          <button class="copy" data-copy="npm install -g @thl-ai/herdr-link">Copy</button>
+        </div>
+        <p class="then">then <code>herdr-link init</code>: it asks for a bot token and sets up the rest.</p>
+        <div class="ctas">
+          <a class="btn primary" href="https://github.com/THL-AI/herdr-link#install">Get started</a>
+          <a class="btn" href="https://github.com/THL-AI/herdr-link">GitHub</a>
+        </div>
+      </div>
+
+      <div class="phone" aria-label="An example conversation">
+        <div class="screen">
+          <div class="chat-head"><span class="hash">#</span><strong>✳️api</strong><span class="room">web</span></div>
+          <div class="msgs">
+            <div class="msg">
+              <div class="avatar you">Y</div>
+              <div>
+                <div class="who">you <span>9:41</span></div>
+                <div class="bubble">run the tests and fix what fails</div>
+                <span class="reaction">👀 1</span>
+              </div>
+            </div>
+            <div class="msg">
+              <div class="avatar bot"><img src="logo.svg" alt=""></div>
+              <div>
+                <div class="who">herdr-link <span>9:42</span></div>
+                <div class="bubble">🔐 Permission: approve Bash: <code>pnpm test</code></div>
+                <div class="buttons"><b class="allow pressed">Allow</b><b class="always">Allow always</b><b class="deny">Deny</b></div>
+              </div>
+            </div>
+            <div class="msg">
+              <div class="avatar bot"><img src="logo.svg" alt=""></div>
+              <div>
+                <div class="who">herdr-link <span>9:47</span></div>
+                <div class="bubble">Fixed the missing import in <code>src/routes.ts</code>. All 67 tests pass.</div>
+              </div>
+            </div>
+            <div class="msg">
+              <div class="avatar you">Y</div>
+              <div>
+                <div class="who">you <span>9:48</span></div>
+                <div class="bubble">nice, commit it</div>
+                <span class="reaction">👀 1</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+  </div>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="sub">herdr-link runs next to herdr on your computer. herdr stays the source of truth; the chat
+        app becomes a remote for it.</p>
+      <div class="flow">
+        <div class="node">
+          <div class="tag">herdr</div>
+          <h3>Spaces, tabs, agents</h3>
+          <p>Claude Code, Grok or any program, each in its tab, reporting working, done or needs you.</p>
+        </div>
+        <div class="arrow">⇄</div>
+        <div class="node mid">
+          <div class="tag">herdr-link</div>
+          <h3>Mirrors and routes</h3>
+          <p>Keeps rooms and threads in step with herdr, types your messages into the right agent, brings
+            their replies back through one shared hook.</p>
+        </div>
+        <div class="arrow">⇄</div>
+        <div class="node">
+          <div class="tag">your chat app</div>
+          <h3>Rooms, threads, buttons</h3>
+          <p>Push notifications, history and buttons from the app on your phone. Discord built in.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>From your phone</h2>
+      <p class="sub">Everything you'd walk back to your desk for.</p>
+      <div class="grid">
+        <div class="card"><div class="icon">💬</div><h3>Talk to an agent</h3><p>Write in a tab's thread: it is typed into that tab's agent. Screenshots and files land beside it.</p></div>
+        <div class="card"><div class="icon">🔐</div><h3>Approve from anywhere</h3><p>Permission prompts arrive with Allow, Allow always and Deny, wired to each agent's real keys.</p></div>
+        <div class="card"><div class="icon">🔔</div><h3>Know when it's done</h3><p>The agent's final answer, or "✅ Done" and "⚠️ Needs you", as messages your phone pings you for.</p></div>
+        <div class="card"><div class="icon">➕</div><h3>Start new work</h3><p>A new thread opens a new tab with the agent you pick; a task in your private chat with the bot starts one in any space.</p></div>
+        <div class="card"><div class="icon">📊</div><h3>A control room</h3><p>Your private chat with the bot keeps a live dashboard of every agent, plus <code>/status</code>, <code>/screen</code> and <code>/space new</code>.</p></div>
+        <div class="card"><div class="icon">🧭</div><h3>Split tabs, many machines</h3><p>Several panes in one tab, spaces on other herdr machines, several computers: each stays clear.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="adapters">
+    <div class="wrap split">
+      <div>
+        <h2>Bring your own chat app</h2>
+        <p class="sub">Adapters are separate programs, in any language, speaking a small JSON-RPC protocol on
+          stdin and stdout. The bridge does everything herdr-specific; an adapter only knows its platform.
+          Discord is one of them.</p>
+        <ul class="plain">
+          <li><strong>Rooms, threads, buttons:</strong> the adapter maps them to what its app has.</li>
+          <li><strong>Capabilities:</strong> no buttons or no rooms? The bridge works around it.</li>
+          <li><strong>A full spec:</strong> an OpenRPC schema, examples and a 50-line adapter to start from.</li>
+        </ul>
+        <div class="ctas"><a class="btn" href="docs/adapters.html">Writing an adapter →</a></div>
+      </div>
+<pre><span class="c">// bridge → adapter</span>
+{<span class="k">"method"</span>: "message.post", "params": {
+  "place": {"kind": "thread", "thread": "45"},
+  "text": "🔐 Permission: approve Bash: pnpm test",
+  "actions": [{"id": "prompt:3:allow", "label": "Allow"},
+              {"id": "prompt:3:deny", "label": "Deny"}]}}
+
+<span class="c">// adapter → bridge: the owner pressed Allow</span>
+{<span class="k">"method"</span>: "action.pressed", "params": {
+  "place": {"kind": "thread", "thread": "45"},
+  "message": "9001", "action": "prompt:3:allow"}}</pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div>
+        <h2>Only you</h2>
+        <p class="sub">Whoever can write in those threads can run code on your machine, so herdr-link is
+          built for one owner.</p>
+      </div>
+      <ul class="plain">
+        <li><strong>Owner check</strong> on every message, reaction, button and command, not only chat permissions.</li>
+        <li><strong>Private rooms</strong> only you and the bot can see; your other rooms on the same server are left alone.</li>
+        <li><strong>Local hooks:</strong> agents talk to herdr-link over a unix socket only you can open.</li>
+        <li><strong>Least privilege:</strong> each adapter sees only the secrets its config lists.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Documentation</h2>
+      <p class="sub">On macOS and Linux, with Node 24. <code>herdr-link doctor --fix</code> checks and repairs
+        the setup, herdr included.</p>
+      <div class="docs">
+        <a href="docs/configuration.html"><strong>Configuration</strong><span>every setting and file</span></a>
+        <a href="docs/agents.html"><strong>Agents</strong><span>add one, find its keys</span></a>
+        <a href="docs/adapters.html"><strong>Adapters</strong><span>bring another chat app</span></a>
+        <a href="docs/troubleshooting.html"><strong>Troubleshooting</strong><span>doctor and common problems</span></a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <footer>
+      <span>herdr-link · MIT · the ram is <a href="https://herdr.dev">herdr</a>'s own</span>
+      <span><a href="https://github.com/THL-AI/herdr-link">GitHub</a> · <a href="https://www.npmjs.com/package/@thl-ai/herdr-link">npm</a></span>
+    </footer>
+  </div>
+
+  <script>
+    for (const button of document.querySelectorAll("[data-copy]")) {
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy)
+          button.textContent = "Copied"
+          setTimeout(() => (button.textContent = "Copy"), 1500)
+        } catch {}
+      })
+    }
+  </script>
+</body>
+</html>
