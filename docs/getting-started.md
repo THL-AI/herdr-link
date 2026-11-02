@@ -1,8 +1,6 @@
 # Getting started
 
 From nothing to answering your agents from your phone, in about ten minutes.
-This guide uses the built-in Discord adapter; other chat apps plug in through
-[their own adapters](adapters.md).
 
 ## What you need
 
@@ -10,9 +8,10 @@ This guide uses the built-in Discord adapter; other chat apps plug in through
   herdr-core runs your agents, the herdr app holds your spaces and tabs. No
   herdr yet? `init` offers to install it with herdr's official installer.
 - **Node 24** or newer (`node --version`).
-- **A Discord account** and a server of your own. A new, empty server is
-  best: the bot only touches what it creates, but channel access means
-  running code on your computer, so keep it to yourself.
+- **A chat app** to talk to your agents from. Today that's **Discord**: an
+  account and a server of your own. A new, empty server is best: the bot only
+  touches what it creates, but channel access means running code on your
+  computer, so keep it to yourself.
 
 ## 1. Install herdr-link
 
@@ -20,7 +19,19 @@ This guide uses the built-in Discord adapter; other chat apps plug in through
 npm install -g @thl-ai/herdr-link
 ```
 
-## 2. Create the bot
+## 2. Connect a chat app
+
+herdr-link talks to chat apps through **adapters**, small programs that
+translate between herdr-link and one chat app. It ships with one today:
+**Discord**.
+
+> **Using something else?** Telegram, Slack, Matrix, your own: an adapter is
+> any program, in any language, that speaks a small JSON-RPC protocol on
+> stdin and stdout. [Writing an adapter](adapters.md) has the protocol, a
+> 50-line example to start from, and how to plug it in. If you write one,
+> tell us: it may well ship here next.
+
+### Discord: create the bot
 
 The one step you do by hand: Discord doesn't let programs create bots.
 
