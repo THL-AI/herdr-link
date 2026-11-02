@@ -1,5 +1,5 @@
 /**
- * Entry point: `herdr-link [config.toml]`. Starts the adapters, connects to
+ * The bridge: `herdr-link [run] [config.toml]`. Starts the adapters, connects to
  * herdr-core, listens for agent hooks and runs the bridge core.
  */
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
@@ -31,8 +31,8 @@ const run = (hooks: Stream.Stream<Hooks.HookMessage>) => Effect.gen(function*() 
   })
 })
 
-const main = Effect.gen(function*() {
-  const path = process.argv[2] ?? (yield* defaultPath)
+const main = (configPath: string | undefined) => Effect.gen(function*() {
+  const path = configPath ?? (yield* defaultPath)
   yield* Effect.logInfo(`config: ${path}`)
   // First, so a second bridge stops before it starts adapters.
   const hooks = yield* Hooks.listen(Hooks.defaultSocket())
@@ -51,4 +51,5 @@ const main = Effect.gen(function*() {
   Effect.provide(NodeServices.layer)
 )
 
-NodeRuntime.runMain(main)
+/** Runs the bridge until interrupted (Ctrl-C, SIGTERM). */
+export const start = (configPath?: string) => NodeRuntime.runMain(main(configPath))

@@ -2,7 +2,7 @@
  * The bridge core: routes between herdr-core, the agent hooks and the chat
  * adapters, without knowing any platform.
  *
- * - Mirror: the Mac is the source of truth. A herdr space becomes a private
+ * - Mirror: herdr is the source of truth. A herdr space becomes a private
  *   room, each of its tabs a thread named after the tab and prefixed with its
  *   agent's emoji.
  * - Owner → agent: a message in a tab's thread is typed into the tab's agent
@@ -10,15 +10,15 @@
  * - Agent → owner: the shared `Stop` hook brings the agent's reply, posted in
  *   the thread. A turn without a hook reply still gets "✅ Done", and
  *   `blocked` gets "⚠️ Needs you".
- * - Closed on the Mac: a tab's thread moves to the archive room and is deleted
+ * - Closed in herdr: a tab's thread moves to the archive room and is deleted
  *   a week later; a closed space's room is deleted. Deleted by the owner on
- *   the platform: the tab is closed on the Mac (its terminals end).
+ *   the platform: the tab is closed in herdr (its terminals end).
  * - The direct conversation is the control room: a dashboard message edited
  *   as agents change, and quick tasks (pick a space, a new tab starts on it).
  * - Permission prompts (`blocked` with kind `permission`) get Allow / Allow
  *   always / Deny buttons; a press types the agent's configured keys
  *   (`terminal.keys`). The buttons go away once the prompt is answered,
- *   here or on the Mac.
+ *   here or in herdr.
  *
  * Rooms and threads made by hand on the platform are never touched.
  *
@@ -171,7 +171,7 @@ export const run = Effect.fnUntraced(function*(options: {
         }
       }
 
-      // Tabs and spaces closed on the Mac. An empty layout is more likely a glitch
+      // Tabs and spaces closed in herdr. An empty layout is more likely a glitch
       // (the app restarting) than everything closed: then nothing is archived.
       if (spaces.length > 0) {
         const liveTabs = new Set(spaces.flatMap((space) => space.tabs.map((tab) => tab.id)))
@@ -186,7 +186,7 @@ export const run = Effect.fnUntraced(function*(options: {
           const moved = yield* chat.call(adapter, "thread.ensure", {
             room: archiveRoom.room,
             thread: ThreadId.make(entry.thread),
-            topic: `closed on the Mac; deleted after ${keepArchived} days`
+            topic: `closed in herdr; deleted after ${keepArchived} days`
           }).pipe(Effect.option) // already deleted by hand: nothing to keep
           if (moved._tag === "Some") archive.threads[entry.thread] = { tab: tabId, archivedAt: yield* Clock.currentTimeMillis }
           yield* Effect.logInfo(`archived the thread of closed tab ${tabId}`)
@@ -313,7 +313,7 @@ export const run = Effect.fnUntraced(function*(options: {
       )
     )
 
-  // Permission prompts: one open prompt per terminal, answered by a button or on the Mac.
+  // Permission prompts: one open prompt per terminal, answered by a button or in herdr.
 
   interface Prompt {
     readonly id: number
@@ -356,7 +356,7 @@ export const run = Effect.fnUntraced(function*(options: {
           label: trust ? "Trust" : choices[choice].label,
           style: choices[choice].style
         }))
-      const note = actions.length === 0 ? "\n(answer it on the Mac)" : trust ? "\n(to refuse, answer it on the Mac)" : ""
+      const note = actions.length === 0 ? "\n(answer it in herdr)" : trust ? "\n(to refuse, answer it in herdr)" : ""
       const posted = yield* postToTab(address, `${text}${note}`, actions)
       prompts.set(address, { id, address, text, trust, posted })
     })
@@ -519,7 +519,7 @@ export const run = Effect.fnUntraced(function*(options: {
         argv: agentArgv(agent)
       }).pipe(
         Effect.catch((error) =>
-          chat.call(adapter, "message.post", { place, text: `⚠️ Cannot open a tab on the Mac: ${error.message}` }).pipe(
+          chat.call(adapter, "message.post", { place, text: `⚠️ Cannot open a tab in herdr: ${error.message}` }).pipe(
             Effect.ignore,
             Effect.as(undefined)
           )
@@ -776,7 +776,7 @@ export const run = Effect.fnUntraced(function*(options: {
           yield* syncAll
           for (const prompt of [...prompts.values()]) {
             if (terminals.get(prompt.address)?.status?.state !== "blocked") {
-              yield* closePrompt(prompt, "answered on the Mac")
+              yield* closePrompt(prompt, "answered in herdr")
             }
           }
           for (const terminal of event.terminals) {
@@ -798,7 +798,7 @@ export const run = Effect.fnUntraced(function*(options: {
           }
           const state = event.status?.state
           const open = prompts.get(event.address)
-          if (open !== undefined && state !== "blocked") yield* closePrompt(open, "answered on the Mac")
+          if (open !== undefined && state !== "blocked") yield* closePrompt(open, "answered in herdr")
           if (state === undefined || state === before) return
           if (state === "blocked" && event.status?.kind === "permission") {
             return yield* openPrompt(event.address, event.status)

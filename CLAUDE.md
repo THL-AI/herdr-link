@@ -13,10 +13,21 @@ Personal notes for the maintainer's own machine live in `CLAUDE.local.md`
 pnpm typecheck        # tsc --noEmit
 pnpm test             # vitest
 pnpm schema           # regenerate schema/chat.openrpc.json (a test checks it)
-pnpm start            # run the bridge in the foreground
-pnpm hooks:install    # install the shared agent hook (Claude Code, Grok)
-pnpm service:install  # run as a launchd agent (macOS); also uninstall, status
+pnpm start            # the bridge in the foreground (= herdr-link run)
 ```
+
+The `herdr-link` CLI (`src/cli/`): `init` (setup wizard: token, intent, owner
+and guild found through the Discord API, agents on PATH, config + `.env`,
+hooks, service), `doctor`, `run`, `service install | uninstall | status |
+logs` (launchd on macOS, a systemd user unit on Linux, both through the
+user's login shell with this Node), `hooks install | uninstall`. In a checkout
+the pnpm scripts `hooks:install`, `service:install`… call it.
+
+Published to npm as `@thl-ai/herdr-link` (`herdr-link` is taken by an
+unrelated package) by `.github/workflows/release.yml` on a `v*` tag matching
+`package.json` (needs the `NPM_TOKEN` secret). The package ships TypeScript
+sources run through tsx (a runtime dependency); `files` in `package.json`
+lists what goes in. CI runs on Ubuntu and macOS.
 
 ## Architecture
 
@@ -54,12 +65,15 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   (id mapping in the core doc `herdr-link`), `Hooks.ts` (the hook socket),
   `Commands.ts`, `Text.ts` (splitting at `maxText`, code fences balanced).
 - `src/adapters/discord/main.ts`: the Discord adapter, its own process.
-- `hooks/`: the shared agent hook and its installer. `bin/`: entry points
-  runnable from anywhere. `scripts/service.mjs`: the launchd agent.
+- `src/cli/`: the `herdr-link` command (`main.ts` dispatches; `init`,
+  `doctor`, `service`, `hooks`, Discord REST for setup, local probes).
+- `hooks/herdr-link-hook.mjs`: the shared agent hook (plain Node, fast). `bin/`:
+  entry points runnable from anywhere (they register tsx and load
+  `~/.config/herdr-link/.env`, or a `.env` in a checkout).
 
 ## Behaviour
 
-- **The Mac is the source of truth.** A herdr space → a private room (Discord:
+- **herdr is the source of truth.** A herdr space → a private room (Discord:
   a category only the owner and the bot see), each tab → a thread named
   `<agent emoji><tab>`. Rooms and threads made by hand are never touched.
 - **Owner → agent:** a message in a tab's thread → `terminal.send` to the tab's
@@ -69,8 +83,8 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   a hook reply within 4 s → "✅ Done"; `blocked` → "⚠️ Needs you".
 - **Permission prompts** (`blocked` + kind `permission`) → Allow / Allow
   always / Deny buttons for the keys the agent has in config, sent with
-  `terminal.keys`; the message is edited to the outcome, or to "answered on
-  the Mac". A "trust this folder?" question gets only a Trust button (`trust`
+  `terminal.keys`; the message is edited to the outcome, or to "answered in
+  herdr". A "trust this folder?" question gets only a Trust button (`trust`
   keys). One open prompt per terminal, in memory; after a restart the snapshot
   reopens prompts still blocked and stale buttons are cleared.
 - **New threads:** a thread the owner creates in one of the bot's space rooms
@@ -78,10 +92,10 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   compared without U+FE0F) picks the agent; otherwise "Who works here?" with
   buttons and logo reactions. The thread is linked before the layout change
   lands, so the sync renames it instead of making another.
-- **Closed on the Mac:** a tab's thread moves to `📦 archive` and is deleted
+- **Closed in herdr:** a tab's thread moves to `📦 archive` and is deleted
   after 7 days (hourly sweep, at most 45 kept); a closed space's room is
   deleted. An empty layout archives nothing (likely the app restarting).
-- **Deleted by the owner:** the tab is closed on the Mac (`tab.close`, else
+- **Deleted by the owner:** the tab is closed in herdr (`tab.close`, else
   `terminal.kill`). The bot's own creations and deletions are never reported
   back by the adapter.
 - **Commands:** `/screen` (the tab's screen), `/status`, `/space new name
@@ -114,9 +128,10 @@ notifications; stderr is the adapter's log. Exported for adapter authors as
 
 ## Config
 
-`~/.config/herdr-link/config.toml` (or `$HERDR_LINK_CONFIG`, or the first
-argument), decoded with Effect Schema, unknown keys rejected. Secrets live in
-`~/.config/herdr-link/.env` or the repo's `.env`, never in the TOML. See
+`~/.config/herdr-link/config.toml` (or `$HERDR_LINK_CONFIG`, or `herdr-link
+run <path>`), written by `herdr-link init`, decoded with Effect Schema,
+unknown keys rejected. Secrets live in `~/.config/herdr-link/.env` (0600) or a
+checkout's `.env`, never in the TOML. See
 `config.example.toml`. Agent keys verified live:
 
 - Claude Code 2.1.316: `1` Yes, `2` Yes and don't ask again, `3` auto mode,

@@ -1,0 +1,59 @@
+/** The `herdr-link` command. */
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { doctor } from "./doctor.ts"
+import * as Hooks from "./hooks.ts"
+import { init } from "./init.ts"
+import { packageRoot } from "./paths.ts"
+import { ok } from "./prompt.ts"
+import * as Service from "./service.ts"
+
+const usage = `herdr-link: your herdr agents in a chat app
+
+  herdr-link init                 set it up (bot, config, hooks, service)
+  herdr-link doctor               check every piece
+  herdr-link run [config.toml]    run the bridge in the foreground
+  herdr-link service install | uninstall | status | logs
+  herdr-link hooks install | uninstall
+  herdr-link --version`
+
+const [command = "help", sub, ...rest] = process.argv.slice(2)
+
+const main = async () => {
+  switch (command) {
+    case "run": {
+      const { start } = await import("../main.ts")
+      return start(sub)
+    }
+    case "init":
+      return init()
+    case "doctor":
+      process.exitCode = (await doctor()) === 0 ? 0 : 1
+      return
+    case "hooks":
+      if (sub !== "install" && sub !== "uninstall") break
+      for (const line of Hooks.install(sub === "uninstall")) ok(line)
+      return
+    case "service": {
+      const service = Service.manager()
+      if (sub === "install" || sub === "uninstall") {
+        for (const line of service[sub]()) ok(line)
+        return
+      }
+      if (sub === "status") return console.log(`${service.name}: ${service.status().details}`)
+      if (sub === "logs") return console.log(service.logs())
+      break
+    }
+    case "--version":
+    case "-v":
+      return console.log(JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version)
+  }
+  console.log(usage)
+  if (command !== "help" && command !== "--help" && command !== "-h") process.exitCode = 1
+  void rest
+}
+
+main().catch((error) => {
+  console.error(`herdr-link: ${error instanceof Error ? error.message : String(error)}`)
+  process.exitCode = 1
+})

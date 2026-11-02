@@ -1,6 +1,6 @@
 # herdr-link
 
-Run your coding agents in herdr on your Mac, steer them
+Run your coding agents in herdr on your computer, steer them
 from your phone.
 
 herdr-link mirrors herdr onto a chat app (Discord today, others through
@@ -20,7 +20,7 @@ with the bot is a control room with a live dashboard.
 
 ## What it does
 
-| On the Mac | In the chat |
+| In herdr | In the chat |
 | --- | --- |
 | a space | a private category (only you and the bot) |
 | a tab | a channel `✳️main` named with its agent's emoji |
@@ -29,7 +29,7 @@ with the bot is a control room with a live dashboard.
 | a permission prompt | 🔐 with Allow, Allow always, Deny |
 | a tab or space closed | its channel moves to `📦 archive`, deleted after 7 days |
 
-| In the chat | On the Mac |
+| In the chat | In herdr |
 | --- | --- |
 | a message in a tab's channel | typed into its agent (files are put beside it) |
 | a new channel `✳️api` in a space's category | a new tab with that agent (no emoji: the bot asks) |
@@ -41,60 +41,56 @@ Agents are configuration, not code: Claude Code and Grok are set up out of the
 box (their keys for Allow / Deny are verified against the real apps), and any
 program can be an agent.
 
-## Requirements
+## Install
 
-- macOS with herdr (herdr-core and the herdr-app window)
-- Node 24 and pnpm
-- a Discord server of your own and a bot (below)
+You need herdr (herdr-core and the herdr-app window) on **macOS or Linux**,
+Node 24, and a Discord server of your own.
 
-## Setup
+```sh
+npm install -g @thl-ai/herdr-link
+herdr-link init
+```
 
-1. **Install**
+(Until the first npm release: `npm install -g github:THL-AI/herdr-link`.)
 
-   ```sh
-   git clone https://github.com/THL-AI/herdr-link.git && cd herdr-link
-   pnpm install
-   ```
+`herdr-link init` walks you through the rest and only asks what it cannot find
+out: it checks herdr, takes your bot token (and tells you how to make one),
+turns on the Message Content intent, finds your user ID and the server the bot
+is on (or gives you the invite link), picks up the agents on your PATH, writes
+`~/.config/herdr-link/config.toml` and `.env`, installs the agent hooks and
+starts the bridge in the background (launchd on macOS, a systemd user unit on
+Linux).
 
-2. **Create the Discord bot** at <https://discord.com/developers/applications>:
-   - *New Application*; on **Installation** set *Install Link* to *None*.
-   - **Bot**: turn off *Public Bot*, leave *Requires OAuth2 Code Grant* off,
-     turn on *Message Content Intent*, *Reset Token* and copy it.
-   - Optional: upload your agents' logos under **Emojis** (e.g. `claude`,
-     `grok`); they are used for buttons and reactions.
-   - Invite it, with your Application ID:
-     `https://discord.com/oauth2/authorize?client_id=APP_ID&scope=bot+applications.commands&permissions=275146443856`
-     (View Channels, Send Messages, Send Messages in Threads, Read Message
-     History, Attach Files, Add Reactions, Manage Channels, Manage Roles; no
-     Administrator).
-   - In Discord, enable *Developer Mode* and copy your server ID and user ID.
+Then, in Discord: allow the bot's commands only for yourself (Server Settings
+→ Integrations), and set its categories to *All Messages* to get pushes.
 
-3. **Configure**
+```
+herdr-link doctor                # check every piece, with fixes
+herdr-link service status | logs | install | uninstall
+herdr-link hooks install | uninstall
+herdr-link run                   # in the foreground instead of the service
+```
 
-   ```sh
-   mkdir -p ~/.config/herdr-link
-   cp config.example.toml ~/.config/herdr-link/config.toml   # set owner and guild
-   echo 'DISCORD_TOKEN=...' > ~/.config/herdr-link/.env
-   ```
+<details>
+<summary>Doing it by hand</summary>
 
-4. **Hook the agents** (their replies reach the chat through one shared hook):
+1. Create the bot at <https://discord.com/developers/applications>: *New
+   Application*; on **Installation** set *Install Link* to *None*; on **Bot**
+   turn off *Public Bot*, turn on *Message Content Intent*, *Reset Token* and
+   copy it. Optionally upload your agents' logos under **Emojis** (`claude`,
+   `grok`).
+2. Invite it with your Application ID:
+   `https://discord.com/oauth2/authorize?client_id=APP_ID&scope=bot+applications.commands&permissions=275146443856`
+   (View Channels, Send Messages, Send Messages in Threads, Read Message
+   History, Attach Files, Add Reactions, Manage Channels, Manage Roles; no
+   Administrator).
+3. Copy [`config.example.toml`](config.example.toml) to
+   `~/.config/herdr-link/config.toml` and set `owner` (your user ID) and
+   `guild` (the server ID; Developer Mode, right-click, Copy ID). Put
+   `DISCORD_TOKEN=...` in `~/.config/herdr-link/.env`.
+4. `herdr-link hooks install`, then `herdr-link service install`.
 
-   ```sh
-   pnpm hooks:install     # Claude Code (~/.claude/settings.json, backed up) and Grok
-   ```
-
-5. **Run**
-
-   ```sh
-   pnpm service:install   # a launchd agent: starts at login, restarts on crash
-   pnpm service:status    # state and the last log lines
-   ```
-
-   or `pnpm start` in the foreground. Only one bridge runs at a time.
-
-6. **Lock it down:** in Server Settings → Integrations, allow the bot's
-   commands only for yourself; give nobody else Administrator, Manage Channels
-   or Manage Roles; set the bot's categories to *All Messages* to get pushes.
+</details>
 
 ## Configuration
 
@@ -105,7 +101,7 @@ permission prompts: `allow`, `always`, `deny`, `trust`.
 
 ## Security
 
-Whoever can write in the bot's channels can run code on your Mac. The adapter
+Whoever can write in the bot's channels can run code on your machine. The adapter
 checks every message, reaction, button and command against your user ID, the
 categories are private, and the hook talks to the bridge over a unix socket
 only you can open. Don't send secrets through it: the chat platform sees

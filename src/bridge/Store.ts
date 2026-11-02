@@ -16,7 +16,7 @@ const ThreadEntry = Schema.Struct({
   emoji: Schema.optionalKey(Schema.String)
 })
 
-/** A thread whose tab was closed on the Mac, kept for a while in the archive room. */
+/** A thread whose tab was closed in herdr, kept for a while in the archive room. */
 const ArchivedThread = Schema.Struct({
   tab: Schema.String,
   archivedAt: Schema.Number

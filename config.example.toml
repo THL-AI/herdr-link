@@ -1,5 +1,6 @@
-# Copy to ~/.config/herdr-link/config.toml (or pass a path / set
-# HERDR_LINK_CONFIG). Secrets go in .env, never here.
+# `herdr-link init` writes this for you. By hand: copy it to
+# ~/.config/herdr-link/config.toml (or pass a path / set HERDR_LINK_CONFIG).
+# Secrets go in ~/.config/herdr-link/.env, never here.
 
 [adapters.discord]
 command = ["herdr-link-discord"]   # argv of the adapter process

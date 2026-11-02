@@ -18,7 +18,7 @@ export const specs = (agents: Readonly<Record<string, Agent>>): ReadonlyArray<Co
   },
   {
     name: "space new",
-    description: "Make a herdr space on the Mac (needs the herdr app open)",
+    description: "Make a herdr space (needs the herdr app open)",
     options: [
       { name: "name", description: "Space name", type: "string", required: true },
       { name: "folder", description: "Folder its terminals start in, e.g. ~/Projects/api", type: "string", required: true },

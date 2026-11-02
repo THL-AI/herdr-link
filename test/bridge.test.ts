@@ -312,13 +312,13 @@ describe("permission prompts", () => {
       yield* connect(env)
       yield* Queue.offer(env.coreEvents, blocked(2, "Trust this folder?"))
       const prompt = yield* env.take
-      assert.strictEqual(prompt.params.text, "🔐 Permission: Trust this folder?\n(to refuse, answer it on the Mac)")
+      assert.strictEqual(prompt.params.text, "🔐 Permission: Trust this folder?\n(to refuse, answer it in herdr)")
       assert.deepStrictEqual(prompt.params.actions.map((a: any) => [a.id, a.label]), [["prompt:1:allow", "Trust"]])
       yield* Queue.offer(env.chatEvents, pressed("prompt:1:allow"))
       assert.deepStrictEqual((yield* Queue.take(env.coreCalls)).params.keys, ["y"])
     }))
 
-  it.effect("clears the buttons when the prompt is answered on the Mac", () =>
+  it.effect("clears the buttons when the prompt is answered in herdr", () =>
     Effect.gen(function*() {
       const env = yield* setup
       yield* connect(env)
@@ -327,7 +327,7 @@ describe("permission prompts", () => {
       yield* Queue.offer(env.coreEvents, { _tag: "status", seq: 3, address: "t1", status: { state: "working" } })
       const edited = yield* env.take
       assert.strictEqual(edited.method, "message.edit")
-      assert.strictEqual(edited.params.text, "🔐 Permission: approve Edit: src/a.ts\n→ answered on the Mac")
+      assert.strictEqual(edited.params.text, "🔐 Permission: approve Edit: src/a.ts\n→ answered in herdr")
       assert.deepStrictEqual(edited.params.actions, [])
     }))
 })
@@ -374,9 +374,9 @@ describe("closed tabs and deleted threads", () => {
       const calls = yield* drain(env)
       assert.deepStrictEqual(calls.map((c) => [c.method, c.params]), [
         ["room.ensure", { name: "📦 archive" }],
-        ["thread.ensure", { room: "room-📦 archive", thread: "thread-Shell Tab", topic: "closed on the Mac; deleted after 7 days" }],
+        ["thread.ensure", { room: "room-📦 archive", thread: "thread-Shell Tab", topic: "closed in herdr; deleted after 7 days" }],
         ["room.ensure", { name: "📦 archive", room: "room-📦 archive" }],
-        ["thread.ensure", { room: "room-📦 archive", thread: "thread-ui", topic: "closed on the Mac; deleted after 7 days" }],
+        ["thread.ensure", { room: "room-📦 archive", thread: "thread-ui", topic: "closed in herdr; deleted after 7 days" }],
         ["room.delete", { room: "room-web" }]
       ])
       const saved = (env.docs.get(Store.docName)?.value as Store.State).adapters.discord!
