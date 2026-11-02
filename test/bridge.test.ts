@@ -54,7 +54,14 @@ const capabilities = {
   maxActions: 25
 }
 
-const setupWith = (extra: { readonly dashboardEvery?: Duration.Input; readonly machine?: string } = {}) => Effect.gen(function*() {
+const setupWith = (
+  extra: {
+    readonly dashboardEvery?: Duration.Input
+    readonly progressEvery?: Duration.Input
+    readonly withoutDashboard?: ReadonlyArray<string>
+    readonly machine?: string
+  } = {}
+) => Effect.gen(function*() {
   const docs = new Map<string, { value: unknown; version: number }>([["herdr-app", { value: layout, version: 1 }]])
   const coreEvents = yield* Queue.unbounded<CoreEvent>()
   const chatEvents = yield* Queue.unbounded<ChatEvent>()
@@ -120,6 +127,12 @@ const setupWith = (extra: { readonly dashboardEvery?: Duration.Input; readonly m
   return { docs, coreEvents, chatEvents, take, calls, hooks, coreCalls, closedTabs, appCalls }
 })
 const setup = setupWith()
+
+/** A new thread's tab starts a moment later: move the clock until it does. */
+const untilTab = (env: { readonly appCalls: Queue.Queue<{ method: string; params: any }> }) =>
+  Effect.gen(function*() {
+    for (let i = 0; i < 20 && (yield* Queue.size(env.appCalls)) === 0; i++) yield* TestClock.adjust("500 millis")
+  })
 
 describe("Bridge", () => {
   it.effect("creates a room per space and a thread per tab, named with the agent's emoji", () =>
@@ -209,6 +222,42 @@ describe("Bridge", () => {
       }
       yield* TestClock.adjust("5 seconds")
       assert.strictEqual(yield* Queue.size(calls), 0) // no bare "Done"
+    }))
+
+  it.effect("shows a long turn's progress in one message, edited, then shrunk to one line", () =>
+    Effect.gen(function*() {
+      const { coreEvents, chatEvents, take, calls, hooks } = yield* setupWith({ progressEvery: "15 seconds" })
+      yield* Queue.offer(coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+      yield* Queue.offer(chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      yield* Effect.all([take, take, take])
+
+      yield* Queue.offer(coreEvents, { _tag: "status", seq: 2, address: "t1", status: { state: "working" } })
+      yield* Queue.offer(hooks, { terminal: "t1", event: "PreToolUse", text: "Reading the code.\nmore detail" })
+      yield* TestClock.adjust("30 seconds")
+      assert.strictEqual(yield* Queue.size(calls), 0) // a quick turn gets no status message
+
+      yield* TestClock.adjust("30 seconds")
+      const posted = yield* take
+      assert.deepStrictEqual(posted.params, {
+        place: { kind: "thread", thread: "thread-✳️main" },
+        text: "⏳ working · 1 min\n› Reading the code."
+      })
+      yield* Queue.offer(hooks, { terminal: "t1", event: "PreToolUse", text: "Reading the code." }) // same note: nothing new
+      yield* Queue.offer(hooks, { terminal: "t1", event: "PreToolUse", text: "Tests pass; writing docs." })
+      yield* TestClock.adjust("15 seconds")
+      const edited = yield* take
+      assert.deepStrictEqual([edited.method, edited.params.text], [
+        "message.edit",
+        "⏳ working · 1 min\n› Reading the code.\n› Tests pass; writing docs."
+      ])
+      yield* TestClock.adjust("15 seconds")
+      assert.strictEqual(yield* Queue.size(calls), 0) // nothing changed: no edit
+
+      yield* TestClock.adjust("60 seconds")
+      yield* take // "2 min"
+      yield* Queue.offer(coreEvents, { _tag: "status", seq: 3, address: "t1", status: { state: "done" } })
+      const last = yield* take
+      assert.deepStrictEqual([last.method, last.params.message, last.params.text], ["message.edit", "m1", "✅ worked 2 min"])
     }))
 
   it.effect("types the owner's message into the tab's agent and marks it seen", () =>
@@ -440,10 +489,11 @@ describe("new tabs from the platform and commands", () => {
     params: { room: RoomId.make(room), thread: ThreadId.make(thread), name }
   })
 
-  it.effect("opens a tab at once when the name starts with an agent's emoji", () =>
+  it.effect("opens a tab when the name starts with an agent's emoji", () =>
     Effect.gen(function*() {
       const env = yield* start
       yield* Queue.offer(env.chatEvents, created("✳api"))
+      yield* untilTab(env)
       assert.deepStrictEqual(yield* Queue.take(env.appCalls), {
         method: "tab.new",
         params: { space: "sp1", name: "api", folder: "/p/api", argv: ["claude"] }
@@ -452,6 +502,46 @@ describe("new tabs from the platform and commands", () => {
       assert.strictEqual(posted.params.text, "✳️ claude is starting in api / api.")
       const saved = (env.docs.get(Store.docName)?.value as Store.State).adapters.discord!
       assert.deepStrictEqual(saved.threads["tb-new"], { thread: "th-new", emoji: "✳️" })
+    }))
+
+  it.effect("makes a message written with the new thread its agent's first task", () =>
+    Effect.gen(function*() {
+      const env = yield* start
+      const message = (text: string, id: string, thread = "th-new"): ChatEvent => ({
+        _tag: "message.received",
+        adapter: "discord",
+        params: { place: { kind: "thread", thread: ThreadId.make(thread) }, message: MessageId.make(id), text, attachments: [] }
+      })
+      yield* Queue.offer(env.chatEvents, created("✳️fix"))
+      yield* Queue.offer(env.chatEvents, message("fix the login form", "u1"))
+      assert.deepStrictEqual((yield* env.take).params, {
+        place: { kind: "thread", thread: "th-new" },
+        message: "u1",
+        emoji: { kind: "unicode", value: "👀" }
+      })
+      yield* TestClock.adjust("2 seconds")
+      assert.deepStrictEqual((yield* Queue.take(env.appCalls)).params, {
+        space: "sp1",
+        name: "fix",
+        folder: "/p/api",
+        argv: ["claude"],
+        task: "fix the login form"
+      })
+
+      // While the bot asks who works there, messages wait too.
+      yield* Queue.offer(env.chatEvents, created("notes", "room-api", "th-2"))
+      yield* env.take // the "starting" post of the first tab
+      const ask = yield* env.take
+      assert.strictEqual(ask.params.text, "Who works here?")
+      yield* Queue.offer(env.chatEvents, message("write it down", "u2", "th-2"))
+      yield* env.take // 👀
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "action.pressed",
+        adapter: "discord",
+        params: { place: { kind: "thread", thread: ThreadId.make("th-2") }, message: MessageId.make("q1"), action: ActionId.make("newtab:1:shell") }
+      })
+      yield* env.take // the edited question
+      assert.strictEqual((yield* Queue.take(env.appCalls)).params.task, "write it down")
     }))
 
   it.effect("asks who works here, then opens the tab with the chosen agent", () =>
@@ -562,6 +652,12 @@ describe("dashboard", () => {
       yield* Effect.yieldNow
       assert.strictEqual((env.docs.get(Store.docName)?.value as Store.State).adapters.discord!.dashboard, "m1")
 
+      // A layout change syncs the threads; the dashboard is still that message.
+      yield* Queue.offer(env.coreEvents, { _tag: "doc", seq: 2, name: "herdr-app", version: 1 })
+      yield* Effect.all([env.take, env.take, env.take])
+      yield* Effect.yieldNow
+      assert.strictEqual((env.docs.get(Store.docName)?.value as Store.State).adapters.discord!.dashboard, "m1")
+
       yield* Queue.offer(env.coreEvents, {
         _tag: "status",
         seq: 2,
@@ -577,6 +673,31 @@ describe("dashboard", () => {
       // Nothing changed: no edit.
       yield* TestClock.adjust("30 seconds")
       assert.strictEqual(yield* Queue.size(env.calls), 0)
+    }))
+})
+
+describe("dashboard off", () => {
+  it.effect("posts no live status; an old one says so once and is forgotten", () =>
+    Effect.gen(function*() {
+      const env = yield* setupWith({ dashboardEvery: "10 seconds", withoutDashboard: ["discord"] })
+      env.docs.set(Store.docName, { value: { adapters: { discord: { rooms: {}, threads: {}, dashboard: "old" } } }, version: 1 })
+      yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+      yield* Queue.offer(env.chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      yield* Effect.all([env.take, env.take, env.take])
+      yield* TestClock.adjust("10 seconds")
+      const edited = yield* env.take
+      assert.deepStrictEqual([edited.method, edited.params.message, edited.params.text], [
+        "message.edit",
+        "old",
+        "The live status is off here; `/status` shows it."
+      ])
+      yield* Queue.offer(env.coreEvents, { _tag: "status", seq: 2, address: "t1", status: { state: "idle" } })
+      yield* TestClock.adjust("30 seconds")
+      yield* Effect.yieldNow
+      assert.strictEqual((env.docs.get(Store.docName)?.value as Store.State).adapters.discord!.dashboard, undefined)
+      const left: Array<{ method: string; params: any }> = []
+      for (let next = yield* Queue.poll(env.calls); next._tag === "Some"; next = yield* Queue.poll(env.calls)) left.push(next.value)
+      assert.isFalse(left.some((call) => call.params?.place?.kind === "direct"))
     }))
 })
 
@@ -749,6 +870,64 @@ describe("adapters without rooms", () => {
       yield* Queue.offer(env.coreEvents, { _tag: "doc", seq: 2, name: "herdr-app", version: 2 })
       yield* env.take // the remaining tab
       assert.deepStrictEqual(yield* env.take, { method: "thread.delete", params: { thread: "thread-api / Shell Tab" } })
+    }))
+
+  const startPlain = Effect.gen(function*() {
+    const env = yield* setup
+    yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+    yield* Queue.offer(env.chatEvents, {
+      _tag: "adapter.connected",
+      adapter: "plain",
+      info: { name: "plain", version: "0" },
+      capabilities: { ...capabilities, rooms: false }
+    })
+    yield* Effect.all([env.take, env.take])
+    yield* Effect.yieldNow
+    return env
+  })
+  const createdPlain = (name: string): ChatEvent => ({
+    _tag: "thread.created",
+    adapter: "plain",
+    params: { thread: ThreadId.make("th-new"), name }
+  })
+
+  it.effect("opens a tab from a new thread named `✳️space / tab`", () =>
+    Effect.gen(function*() {
+      const env = yield* startPlain
+      yield* Queue.offer(env.chatEvents, createdPlain("✳️ API / fix login"))
+      yield* untilTab(env)
+      assert.deepStrictEqual((yield* Queue.take(env.appCalls)).params, {
+        space: "sp1",
+        name: "fix login",
+        folder: "/p/api",
+        argv: ["claude"]
+      })
+    }))
+
+  it.effect("asks which space for a new thread that names none, then who works there", () =>
+    Effect.gen(function*() {
+      const env = yield* startPlain
+      yield* Queue.offer(env.chatEvents, createdPlain("notes"))
+      const where = yield* env.take
+      assert.strictEqual(where.params.text, "Which space?")
+      assert.deepStrictEqual(where.params.choices.map((c: any) => [c.id, c.label]), [["newtab:1@sp1", "api"]])
+      const press = (action: string): ChatEvent => ({
+        _tag: "action.pressed",
+        adapter: "plain",
+        params: { place: { kind: "thread", thread: ThreadId.make("th-new") }, message: MessageId.make("q1"), action: ActionId.make(action) }
+      })
+      yield* Queue.offer(env.chatEvents, press("newtab:1@sp1"))
+      assert.strictEqual((yield* env.take).params.text, "Which space? → api")
+      const who = yield* env.take
+      assert.strictEqual(who.params.text, "Who works here?")
+      yield* Queue.offer(env.chatEvents, press("newtab:2:shell"))
+      yield* env.take // the edited question
+      assert.deepStrictEqual((yield* Queue.take(env.appCalls)).params, {
+        space: "sp1",
+        name: "notes",
+        folder: "/p/api",
+        argv: ["zsh", "-l"]
+      })
     }))
 })
 

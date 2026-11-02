@@ -11,6 +11,7 @@ up; adding another is configuration, not code.
 | --- | --- |
 | "✅ Done", "⚠️ Needs you", 🔐 permission prompts | the agent's **status in herdr** (`working`, `done`, `blocked` with kind `permission` / `question` / `auth`). herdr reports it for the agents it supports. |
 | the agent's reply in the chat | the **shared hook** (below), after each turn |
+| progress on a long turn | the agent's status (`working`) for the time, and the shared hook for its latest notes |
 | typing your messages | `terminal.send`: works with any program |
 | Allow / Deny buttons | the agent's `allow` / `always` / `deny` / `trust` keys, pressed with `terminal.keys` |
 | starting it in a new tab | `argv`, or `template` (run as a program of that name) |
@@ -56,14 +57,18 @@ Verified so far (also in `config.example.toml`):
 ## Replies: the shared hook
 
 After each turn, the agent's final answer goes to the chat through one hook
-script, `hooks/herdr-link-hook.mjs`. `herdr-link hooks install` registers it
+script, `hooks/herdr-link-hook.mjs`. On a long turn, the same hook also
+brings the agent's latest note (the short text it writes between actions)
+before each tool call; herdr-link shows the last few in the turn's status
+message. `herdr-link hooks install` registers it
 for Claude Code (`~/.claude/settings.json`) and Grok (`~/.grok/hooks/`).
 
 Any agent with **Claude-compatible hooks** can use it as is: register the
-command `node <path>/hooks/herdr-link-hook.mjs` for its `Stop`, `StopFailure`
-and `Notification` events. The hook reads the event from stdin
+command `node <path>/hooks/herdr-link-hook.mjs` for its `Stop`, `StopFailure`,
+`Notification` and `PreToolUse` events. The hook reads the event from stdin
 (`hook_event_name` / `hookEventName`, and `last_assistant_message`,
-`lastAssistantMessage` or `transcript_path` for the reply).
+`lastAssistantMessage` or `transcript_path` for the reply; notes come from the
+end of a Claude Code style `transcript_path`).
 
 An agent with another hook system (or a wrapper script) can talk to the
 bridge directly. Connect to the unix socket
@@ -77,6 +82,8 @@ JSON line:
 - `terminal`: the herdr terminal, from the `HC_TERMINAL_ID` environment
   variable every herdr terminal has.
 - `event`: `Stop` (a turn ended; `text` is the reply), `StopFailure` (a turn
-  failed; `error` says why) or `Notification`.
+  failed; `error` says why), `Notification`, or `PreToolUse` (`text` is the
+  agent's latest note, shown in the turn's progress; send it only when it
+  changed is fine, repeats are ignored).
 - Keep it fast and never fail the agent: if the socket is missing, no bridge
   is running; just exit.

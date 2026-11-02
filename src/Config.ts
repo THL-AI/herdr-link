@@ -9,7 +9,7 @@ import * as Toml from "effect/encoding/Toml"
 const Argv = Schema.NonEmptyArray(Schema.NonEmptyString)
 
 /** Keys the bridge reads itself; everything else goes to the adapter in `hello`. */
-export const bridgeKeys = ["command", "env"] as const
+export const bridgeKeys = ["command", "env", "enabled", "dashboard"] as const
 
 export const AdapterSection = Schema.StructWithRest(
   Schema.Struct({
@@ -18,11 +18,21 @@ export const AdapterSection = Schema.StructWithRest(
       Schema.Array(Schema.String.check(Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u))).annotate({
         description: "Names of environment variables passed to the adapter (e.g. its token)."
       })
-    )
+    ),
+    enabled: Schema.optionalKey(Schema.Boolean.annotate({
+      description: "false: the adapter is not started; its section is kept for later. Default true."
+    })),
+    dashboard: Schema.optionalKey(Schema.Boolean.annotate({
+      description: "false: no live status message in the direct conversation (/status still answers). Default true."
+    }))
   }),
   [Schema.Record(Schema.String, Schema.Json)]
 )
 export type AdapterSection = typeof AdapterSection.Type
+
+/** The adapters to start: those not turned off with `enabled = false`. */
+export const enabledAdapters = (adapters: Readonly<Record<string, AdapterSection>>) =>
+  Object.fromEntries(Object.entries(adapters).filter(([, section]) => section.enabled !== false))
 
 export const Agent = Schema.Struct({
   template: Schema.optionalKey(Schema.NonEmptyString),

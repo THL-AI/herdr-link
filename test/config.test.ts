@@ -31,6 +31,16 @@ describe("Config", () => {
       assert.strictEqual(config.agents?.shell?.argv?.[0], "zsh")
     }))
 
+  it.effect("keeps a turned-off adapter out of the start list, and its switches out of hello", () =>
+    Effect.gen(function*() {
+      const config = yield* Config.parse(
+        `${example}\n[adapters.telegram]\ncommand = ["herdr-link-telegram"]\nenabled = false\ndashboard = false\nowner = "1"\n`,
+        "x.toml"
+      )
+      assert.deepStrictEqual(Object.keys(Config.enabledAdapters(config.adapters)), ["discord"])
+      assert.deepStrictEqual(Config.adapterConfig(config.adapters.telegram!), { owner: "1" })
+    }))
+
   it.effect.each([
     ["no command", `[adapters.x]\nowner = "1"`],
     ["empty command", `[adapters.x]\ncommand = []`],

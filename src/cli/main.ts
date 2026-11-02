@@ -7,6 +7,7 @@ import { init } from "./init.ts"
 import { packageRoot } from "./paths.ts"
 import { ok } from "./prompt.ts"
 import * as Service from "./service.ts"
+import { telegram } from "./telegram.ts"
 
 const usage = `herdr-link: your herdr agents in a chat app
 
@@ -15,6 +16,7 @@ const usage = `herdr-link: your herdr agents in a chat app
   herdr-link run [config.toml]    run the bridge in the foreground
   herdr-link service install | uninstall | status | logs
   herdr-link hooks install | uninstall
+  herdr-link telegram             find the ids a Telegram setup needs
   herdr-link --version`
 
 const [command = "help", sub, ...rest] = process.argv.slice(2)
@@ -47,6 +49,9 @@ const main = async () => {
       if (sub === "logs") return console.log(service.logs())
       break
     }
+    case "telegram":
+      process.exitCode = await telegram()
+      return
     case "--version":
     case "-v":
       return console.log(JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version)

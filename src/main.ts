@@ -24,6 +24,8 @@ const run = (hooks: Stream.Stream<Hooks.HookMessage>) => Effect.gen(function*() 
     agents: config.agents ?? {},
     ...(config.machine === undefined ? {} : { machine: config.machine }),
     dashboardEvery: "10 seconds",
+    withoutDashboard: Object.entries(config.adapters).filter(([, section]) => section.dashboard === false).map(([name]) => name),
+    progressEvery: "15 seconds",
     app: {
       closeTab: (id) => HerdrApp.closeTab(id).pipe(withSpawner),
       newTab: (tab) => HerdrApp.newTab(tab).pipe(withSpawner),

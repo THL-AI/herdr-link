@@ -10,6 +10,16 @@ env = ["DISCORD_TOKEN"]              # env vars the adapter may see (besides PAT
 # Everything else in this section is sent to the adapter in `hello`.
 owner = "<discord user snowflake>"
 guild = "<guild snowflake>"
+# enabled = false       # turn this adapter off, keeping its settings
+# dashboard = false     # no live status in the DM; /status still answers
+
+# Telegram: a group with Topics on, the bot an admin with "Manage topics".
+# `herdr-link telegram` finds both ids. TELEGRAM_TOKEN goes in .env.
+# [adapters.telegram]
+# command = ["herdr-link-telegram"]
+# env = ["TELEGRAM_TOKEN"]
+# owner = "<telegram user id>"
+# group = "<group id, -100...>"
 
 [agents.claude]
 template = "claude"

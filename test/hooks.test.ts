@@ -40,20 +40,33 @@ describe("agent hook", () => {
         { type: "assistant", message: { content: [{ type: "text", text: "Fixed: missing import." }] } }
       ].map((line) => JSON.stringify(line)).join("\n"))
 
-      // Not forwarded: outside herdr, a subagent, a session-end Stop, other events.
+      const fresh = join(dir, "fresh.jsonl")
+      writeFileSync(fresh, [
+        { type: "assistant", message: { content: [{ type: "text", text: "old answer" }] } },
+        { type: "user", message: { content: "fix the build" } },
+        { type: "assistant", message: { content: [{ type: "tool_use" }] } }
+      ].map((line) => JSON.stringify(line)).join("\n"))
+
+      // Not forwarded: outside herdr, a subagent, a session-end Stop, other events,
+      // a tool call without a note in this turn yet.
       yield* runHook(socket, { hook_event_name: "Stop", last_assistant_message: "x" }, null)
       yield* runHook(socket, { hook_event_name: "Stop", last_assistant_message: "x", agent_id: "a1" })
       yield* runHook(socket, { hookEventName: "Stop", lastAssistantMessage: "x", reason: "shutdown" })
+      yield* runHook(socket, { hook_event_name: "SessionStart" })
       yield* runHook(socket, { hook_event_name: "PreToolUse" })
+      yield* runHook(socket, { hook_event_name: "PreToolUse", transcript_path: fresh })
       // Forwarded:
       const output = yield* runHook(socket, { hookEventName: "Stop", lastAssistantMessage: "grok says hi", reason: "end_turn" })
       assert.strictEqual(output, "") // prints nothing: never blocks the stop
       yield* runHook(socket, { hook_event_name: "Stop", transcript_path: transcript })
+      // Before a tool call: the agent's latest note.
+      yield* runHook(socket, { hook_event_name: "PreToolUse", transcript_path: transcript })
 
-      const got = yield* messages.pipe(Stream.take(2), Stream.runCollect)
+      const got = yield* messages.pipe(Stream.take(3), Stream.runCollect)
       assert.deepStrictEqual([...got], [
         { terminal: "t5", event: "Stop", text: "grok says hi" },
-        { terminal: "t5", event: "Stop", text: "Looking.\n\nFixed: missing import." }
+        { terminal: "t5", event: "Stop", text: "Looking.\n\nFixed: missing import." },
+        { terminal: "t5", event: "PreToolUse", text: "Fixed: missing import." }
       ])
     }).pipe(Effect.scoped))
 

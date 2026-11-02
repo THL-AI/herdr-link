@@ -3,17 +3,19 @@
 herdr-link talks to chat apps through **adapters**: small programs, in any
 language, that speak a JSON-RPC 2.0 protocol on stdin/stdout. The bridge does
 everything herdr-specific (spaces, tabs, agents, prompts, the archive); the
-adapter only knows its chat platform. The built-in Discord adapter
-(`src/adapters/discord/main.ts`) uses the same protocol as yours would.
+adapter only knows its chat platform. The built-in adapters, Discord
+(`src/adapters/discord/main.ts`) and Telegram (`src/adapters/telegram/main.ts`,
+plain `fetch`, no SDK: a good one to read first), use the same protocol as
+yours would.
 
 The machine-readable reference is [`schema/chat.openrpc.json`](../schema/chat.openrpc.json)
 (OpenRPC). This page explains how to use it.
 
 ## The model
 
-| herdr-link says | means | Discord | Telegram (for example) | Slack (for example) |
+| herdr-link says | means | Discord | Telegram | Slack (for example) |
 | --- | --- | --- | --- | --- |
-| **room** | a herdr space | a category | a forum group | a channel section |
+| **room** | a herdr space | a category | none (`rooms: false`: topics named `space / tab`) | a channel section |
 | **thread** | a herdr tab | a text channel | a forum topic | a channel |
 | **direct** | the owner's private chat with the bot | the DM | the private chat | the DM |
 | **action** | a button under a message | a button | an inline keyboard button | a block button |

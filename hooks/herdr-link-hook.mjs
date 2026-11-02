@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 // The shared agent hook (Claude Code and Grok use the same format). Forwards
-// the turn's final reply to the herdr-link over its unix socket. Plain Node,
-// no dependencies. Never blocks the agent: prints nothing, always exits 0.
-import { readFileSync } from "node:fs"
+// the turn's final reply to herdr-link over its unix socket, and before each
+// tool call the agent's latest note (its short text between actions), which
+// herdr-link shows as the turn's progress. Plain Node, no dependencies. Never
+// blocks the agent: prints nothing, always exits 0.
+import { closeSync, fstatSync, openSync, readFileSync, readSync } from "node:fs"
 import { connect } from "node:net"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
 const terminal = process.env.HC_TERMINAL_ID
 const socket = process.env.HERDR_LINK_SOCKET ?? join(homedir(), ".local/state/herdr-link/hooks.sock")
-const forwarded = new Set(["Stop", "StopFailure", "Notification"])
+const forwarded = new Set(["Stop", "StopFailure", "Notification", "PreToolUse"])
 const maxText = 32768
+/** Before a tool call only the transcript's end is read: it can grow to many megabytes. */
+const tailBytes = 256 * 1024
 
 const readStdin = () => {
   try {
@@ -54,6 +58,56 @@ const lastReplyFromTranscript = (path) => {
   return parts.length === 0 ? undefined : parts.join("\n\n")
 }
 
+/** The last lines of a file, without the first (likely cut) one. */
+const tailLines = (path) => {
+  let fd
+  try {
+    fd = openSync(path, "r")
+    const size = fstatSync(fd).size
+    const length = Math.min(size, tailBytes)
+    const buffer = Buffer.alloc(length)
+    readSync(fd, buffer, 0, length, size - length)
+    const lines = buffer.toString("utf8").split("\n")
+    return size > length ? lines.slice(1) : lines
+  } catch {
+    return []
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
+/** The agent's latest text in this turn (Claude Code transcripts), if any. */
+const latestNote = (path) => {
+  const lines = tailLines(path)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let entry
+    try {
+      entry = JSON.parse(lines[i])
+    } catch {
+      continue
+    }
+    const content = entry?.message?.content
+    if (entry.type === "user") {
+      const isToolResult = Array.isArray(content) && content.some((block) => block?.type === "tool_result")
+      if (!isToolResult) return undefined // the owner's message: no note in this turn yet
+      continue
+    }
+    if (entry.type !== "assistant" || !Array.isArray(content)) continue
+    const text = content.filter((b) => b?.type === "text").map((b) => b.text).join("\n").trim()
+    if (text !== "") return text
+  }
+  return undefined
+}
+
+const send = (message, timeout) => {
+  const client = connect(socket)
+  const done = () => process.exit(0)
+  client.setTimeout(timeout, done)
+  client.on("error", done) // no bridge running: nothing to do
+  client.on("connect", () => client.end(`${JSON.stringify(message)}\n`))
+  client.on("close", done)
+}
+
 const main = () => {
   if (!terminal) return
   const input = readStdin()
@@ -62,6 +116,14 @@ const main = () => {
   if (input.agent_id || input.subagentType) return // subagents report to their parent, not to the owner
   const reason = field(input, "reason")
   if (event === "Stop" && reason !== undefined && reason !== "end_turn") return // session-end Stop (Grok)
+
+  if (event === "PreToolUse") {
+    const transcript = field(input, "transcript_path", "transcriptPath")
+    const note = transcript ? latestNote(transcript) : undefined
+    // Runs before every tool call: give up fast rather than slow the agent down.
+    if (note !== undefined) send({ terminal, event, text: note.slice(0, 2000) }, 500)
+    return
+  }
 
   let text = field(input, "last_assistant_message", "lastAssistantMessage")
   if (text === undefined && event === "Stop") {
@@ -76,13 +138,7 @@ const main = () => {
     ...(field(input, "message") ? { message: field(input, "message") } : {}),
     ...(field(input, "error") ? { error: field(input, "error") } : {})
   }
-
-  const client = connect(socket)
-  const done = () => process.exit(0)
-  client.setTimeout(3000, done)
-  client.on("error", done) // no bridge running: nothing to do
-  client.on("connect", () => client.end(`${JSON.stringify(message)}\n`))
-  client.on("close", done)
+  send(message, 3000)
 }
 
 try {

@@ -28,7 +28,7 @@
  * Everything runs in one loop over the merged core and chat events, so the
  * state needs no locks.
  */
-import { Clock, Deferred, Duration, Effect, Stream } from "effect"
+import { Clock, Deferred, Duration, Effect, Queue, Stream } from "effect"
 import type { Chat, ChatEvent } from "../chat/Chat.ts"
 import type { Agent } from "../Config.ts"
 import type { CoreEvent } from "../core/Events.ts"
@@ -38,6 +38,7 @@ import type { Terminal } from "../core/Methods.ts"
 import * as Spaces from "../core/Spaces.ts"
 import type { Action, Capabilities, Place } from "../protocol/Chat.ts"
 import { ActionId, MessageId, RoomId, ThreadId } from "../protocol/Chat.ts"
+import { ErrorCode } from "../protocol/JsonRpc.ts"
 import type { AdapterToBridge, Params } from "../protocol/Methods.ts"
 import type { HookMessage } from "./Hooks.ts"
 import * as Store from "./Store.ts"
@@ -45,6 +46,17 @@ import { chunk } from "./Text.ts"
 
 /** Wait this long after `done` for the hook's reply before posting a bare "Done". */
 const replyGrace = Duration.seconds(4)
+/**
+ * A new thread's tab starts this long after the thread appears, so a message
+ * written with it (Telegram creates a topic only with its first message)
+ * becomes the agent's first task instead of getting lost.
+ */
+const firstMessageGrace = Duration.seconds(2)
+/** A turn gets a status message once it has run this long (quick answers need none). */
+const showProgressAfter = 45_000
+/** The agent's latest notes shown in it, and their length. */
+const keptNotes = 3
+const maxNote = 160
 interface Posted {
   readonly adapter: string
   readonly place: Place
@@ -116,8 +128,14 @@ export const run = Effect.fnUntraced(function*(options: {
   readonly app: HerdrApp
   /** How often the direct-conversation dashboard may be edited; off when omitted. */
   readonly dashboardEvery?: Duration.Input
+  /** Adapters whose direct conversation gets no live dashboard (`dashboard = false`). */
+  readonly withoutDashboard?: ReadonlyArray<string>
+  /** How often a working agent's status message may be edited; off when omitted. */
+  readonly progressEvery?: Duration.Input
 }) {
   const { chat, core, agents } = options
+  /** Inputs the bridge schedules for itself (a new thread's tab, started a moment later). */
+  const later = yield* Queue.unbounded<Input>()
   /** "api", "api · laptop" (this bridge's machine), or "api · build-box" (a space on another herdr machine). */
   const roomName = (space: Spaces.Space) => {
     const machine = space.machine ?? options.machine
@@ -224,7 +242,11 @@ export const run = Effect.fnUntraced(function*(options: {
       yield* sweepArchive(adapter, archive)
       const keepArchive = archive.room !== undefined || Object.keys(archive.threads).length > 0
       const next: Store.State = {
-        adapters: { ...before.adapters, [adapter]: keepArchive ? { rooms, threads, archive } : { rooms, threads } }
+        // `...mine` keeps what the sync doesn't own (the dashboard's message).
+        adapters: {
+          ...before.adapters,
+          [adapter]: keepArchive ? { ...mine, rooms, threads, archive } : { ...withoutArchive(mine), rooms, threads }
+        }
       }
       if (JSON.stringify(next) !== JSON.stringify(before)) yield* s.save(next)
       yield* Effect.logInfo(`${adapter}: synced ${spaces.length} spaces`)
@@ -232,6 +254,8 @@ export const run = Effect.fnUntraced(function*(options: {
       Effect.catch((error) => Effect.logWarning(`${adapter}: sync failed: ${error.message}`)),
       Effect.annotateLogs({ adapter })
     )
+
+  const withoutArchive = ({ archive: _, ...rest }: Store.AdapterState) => rest
 
   /** Deletes archived threads older than a week, and the oldest beyond the room's capacity. Mutates `archive`. */
   const sweepArchive = (adapter: string, archive: Store.Archive & { threads: Record<string, unknown> }) =>
@@ -516,6 +540,16 @@ export const run = Effect.fnUntraced(function*(options: {
         const answer = text === "" || /^(help|\?|\/help)$/i.test(text) ? helpText : yield* askWhere(adapter, params, text)
         return answer === undefined ? undefined : yield* reply(answer)
       }
+      const early = firstMessages.get(threadKey(adapter, params.place.thread))
+      if (early !== undefined) {
+        // The thread's tab is not up yet: this becomes its agent's first task.
+        early.push(params.text)
+        return yield* chat.call(adapter, "react", {
+          place: params.place,
+          message: MessageId.make(params.message),
+          emoji: { kind: "unicode", value: "👀" }
+        }).pipe(Effect.ignore)
+      }
       const s = yield* loadStore
       const tab = tabOfThread(s, adapter, params.place.thread)
       if (tab === undefined) return // not one of ours: the owner's other channels
@@ -631,12 +665,14 @@ export const run = Effect.fnUntraced(function*(options: {
       const place: Place = { kind: "thread", thread: ThreadId.make(thread) }
       const space = spaces.find((sp) => sp.id === spaceId)
       const agent = agents[agentName]
+      const task = takeFirstMessages(adapter, thread)
       if (space === undefined || agent === undefined) return
       const created = yield* options.app.newTab({
         space: space.id,
         name: tabName,
         folder: space.folder,
-        argv: agentArgv(agent)
+        argv: agentArgv(agent),
+        ...(task === undefined ? {} : { task })
       }).pipe(
         Effect.catch((error) =>
           chat.call(adapter, "message.post", { place, text: `⚠️ Cannot open a tab in herdr: ${error.message}` }).pipe(
@@ -661,22 +697,31 @@ export const run = Effect.fnUntraced(function*(options: {
       )
     })
 
-  const threadCreated = (adapter: string, params: Params<AdapterToBridge["thread.created"]>) =>
+  /** Messages written in a new thread before its tab is up: they become the agent's first task. */
+  const firstMessages = new Map<string, Array<string>>()
+  const threadKey = (adapter: string, thread: string) => `${adapter}\u0000${thread}`
+  const takeFirstMessages = (adapter: string, thread: string) => {
+    const texts = firstMessages.get(threadKey(adapter, thread))
+    firstMessages.delete(threadKey(adapter, thread))
+    const task = (texts ?? []).join("\n\n").trim()
+    return task === "" ? undefined : task
+  }
+
+  /** A new thread in a known space: a leading agent emoji picks the agent, else ask. */
+  const openTabFor = (adapter: string, spaceId: string, thread: string, name: string) =>
     Effect.gen(function*() {
-      const s = yield* loadStore
-      const mine = s.state().adapters[adapter]
-      if (mine === undefined || params.room === undefined) return
-      if (Object.values(mine.threads).some((entry) => entry.thread === params.thread)) return // ours
-      const spaceId = Object.entries(mine.rooms).find(([, room]) => room === params.room)?.[0]
-      if (spaceId === undefined) return // not in one of our rooms: the owner's own channels
-      const found = agentFromName(params.name)
-      if (found !== undefined) return yield* startTab(adapter, spaceId, params.thread, found.agent, found.rest || found.agent)
+      const found = agentFromName(name)
+      if (found !== undefined) {
+        // Started a moment later, so a message that comes with the thread is its task.
+        const start: Input = { from: "start", adapter, spaceId, thread, agent: found.agent, name: found.rest || found.agent }
+        return yield* Effect.sleep(firstMessageGrace).pipe(Effect.andThen(Queue.offer(later, start)), Effect.forkScoped, Effect.asVoid)
+      }
 
       const id = nextPending++
-      pendingTabs.set(id, { adapter, spaceId, thread: params.thread, name: params.name })
+      pendingTabs.set(id, { adapter, spaceId, thread, name })
       const capabilities = adapters.get(adapter)
       yield* chat.call(adapter, "ask", {
-        place: { kind: "thread", thread: ThreadId.make(params.thread) },
+        place: { kind: "thread", thread: ThreadId.make(thread) },
         text: "Who works here?",
         choices: Object.entries(agents).map(([name, agent]) => ({
           id: ActionId.make(`newtab:${id}:${name}`),
@@ -686,14 +731,66 @@ export const run = Effect.fnUntraced(function*(options: {
             : { kind: "unicode" as const, value: agent.emoji }
         })) as never
       })
+    })
+
+  /**
+   * Without rooms, a new thread names its space: `✳️api / fix-login` (the
+   * agent emoji optional). Returns the space and the name left for the tab,
+   * the emoji kept so the agent is still picked from it.
+   */
+  const spaceFromName = (name: string) => {
+    const found = agentFromName(name)
+    const rest = found === undefined ? name.trim() : found.rest
+    const cut = rest.indexOf(" / ")
+    if (cut < 0) return undefined
+    const wanted = rest.slice(0, cut).trim().toLowerCase()
+    const space = spaces.find((sp) => roomName(sp).toLowerCase() === wanted || sp.name.toLowerCase() === wanted)
+    if (space === undefined) return undefined
+    const tab = rest.slice(cut + 3).trim()
+    return { space, name: found === undefined ? tab : `${agents[found.agent]!.emoji}${tab}` }
+  }
+
+  interface PendingSpace {
+    readonly adapter: string
+    readonly thread: string
+    readonly name: string
+  }
+  const pendingSpaces = new Map<number, PendingSpace>()
+
+  const threadCreated = (adapter: string, params: Params<AdapterToBridge["thread.created"]>) =>
+    Effect.gen(function*() {
+      const s = yield* loadStore
+      const mine = s.state().adapters[adapter]
+      if (mine === undefined) return
+      if (Object.values(mine.threads).some((entry) => entry.thread === params.thread)) return // ours
+      const collect = () => firstMessages.set(threadKey(adapter, params.thread), [])
+      if (params.room !== undefined) {
+        const spaceId = Object.entries(mine.rooms).find(([, room]) => room === params.room)?.[0]
+        if (spaceId === undefined) return // not in one of our rooms: the owner's own channels
+        collect()
+        return yield* openTabFor(adapter, spaceId, params.thread, params.name)
+      }
+      // A thread outside rooms means something only to an adapter without rooms.
+      const capabilities = adapters.get(adapter)
+      if (capabilities === undefined || capabilities.rooms) return
+      collect()
+      const named = spaceFromName(params.name)
+      if (named !== undefined) return yield* openTabFor(adapter, named.space.id, params.thread, named.name)
+      if (spaces.length === 0) return
+      const id = nextPending++
+      pendingSpaces.set(id, { adapter, thread: params.thread, name: params.name })
+      yield* chat.call(adapter, "ask", {
+        place: { kind: "thread", thread: ThreadId.make(params.thread) },
+        text: "Which space?",
+        choices: spaces.slice(0, capabilities.maxActions).map((space) => ({
+          id: ActionId.make(`newtab:${id}@${space.id}`),
+          label: roomName(space)
+        })) as never
+      })
     }).pipe(Effect.catch((error) => Effect.logWarning(`cannot open a tab for a new thread: ${error.message}`)))
 
   const answerNewTab = (adapter: string, params: Params<AdapterToBridge["action.pressed"]>) =>
     Effect.gen(function*() {
-      const match = /^newtab:(\d+):(.+)$/.exec(params.action)
-      if (match === null) return
-      const pending = pendingTabs.get(Number(match[1]))
-      const agentName = match[2]!
       const edit = (text?: string) =>
         chat.call(adapter, "message.edit", {
           place: params.place,
@@ -701,6 +798,21 @@ export const run = Effect.fnUntraced(function*(options: {
           actions: [],
           ...(text === undefined ? {} : { text })
         }).pipe(Effect.ignore)
+      const where = /^newtab:(\d+)@(.+)$/.exec(params.action)
+      if (where !== null) {
+        const pending = pendingSpaces.get(Number(where[1]))
+        const space = spaces.find((sp) => sp.id === where[2])
+        if (pending === undefined || space === undefined) return yield* edit()
+        pendingSpaces.delete(Number(where[1]))
+        yield* edit(`Which space? → ${roomName(space)}`)
+        return yield* openTabFor(pending.adapter, space.id, pending.thread, pending.name).pipe(
+          Effect.catch((error) => Effect.logWarning(`cannot open a tab for a new thread: ${error.message}`))
+        )
+      }
+      const match = /^newtab:(\d+):(.+)$/.exec(params.action)
+      if (match === null) return
+      const pending = pendingTabs.get(Number(match[1]))
+      const agentName = match[2]!
       if (pending === undefined || agents[agentName] === undefined) return yield* edit()
       pendingTabs.delete(Number(match[1]))
       yield* edit(`Who works here? → ${agents[agentName]!.emoji} ${agentName}`)
@@ -756,15 +868,33 @@ export const run = Effect.fnUntraced(function*(options: {
     const time = new Date(yield* Clock.currentTimeMillis).toTimeString().slice(0, 5)
     for (const [adapter, capabilities] of adapters) {
       if (!capabilities.direct || !capabilities.edit) continue
-      const text = truncate(`${statusLines()}\n\n_updated ${time}_`, capabilities.maxText)
       const place: Place = { kind: "direct" }
       const known = s.state().adapters[adapter]?.dashboard
+      if (options.withoutDashboard?.includes(adapter)) {
+        // Turned off: the last one says so once, then it is forgotten.
+        if (known === undefined) continue
+        yield* chat.call(adapter, "message.edit", {
+          place,
+          message: MessageId.make(known),
+          text: "The live status is off here; `/status` shows it."
+        }).pipe(Effect.ignore)
+        const state = s.state()
+        const { dashboard: _, ...mine } = state.adapters[adapter] ?? Store.emptyAdapter
+        yield* s.save({ adapters: { ...state.adapters, [adapter]: mine } })
+        continue
+      }
+      const text = truncate(`${statusLines()}\n\n_updated ${time}_`, capabilities.maxText)
       const edited = known === undefined
         ? false
         : yield* chat.call(adapter, "message.edit", { place, message: MessageId.make(known), text }).pipe(
           Effect.as(true),
-          Effect.catch(() => Effect.succeed(false)) // deleted by the owner: post a new one
+          // Deleted by the owner: post a new one. Any other failure: try again next time.
+          Effect.catch((error) => Effect.succeed(error._tag === "RpcError" && error.code === ErrorCode.NotFound ? false : "later" as const))
         )
+      if (edited === "later") {
+        dashboardDirty = true
+        continue
+      }
       if (edited) continue
       const posted = yield* chat.call(adapter, "message.post", { place, text })
       const state = s.state()
@@ -872,6 +1002,85 @@ export const run = Effect.fnUntraced(function*(options: {
       }
     }).pipe(Effect.catch((error) => Effect.succeed(`⚠️ ${error.message}`)))
 
+  // Progress: while an agent works on a long turn, one status message in its
+  // thread says so, edited in place (edits don't push) with the time spent and
+  // the agent's latest notes; at the end it shrinks to one line.
+
+  interface Progress {
+    readonly started: number
+    notes: ReadonlyArray<string>
+    waiting: boolean
+    posted: ReadonlyArray<Posted>
+    shown: string
+  }
+  const progress = new Map<string, Progress>()
+
+  const elapsed = (ms: number) => {
+    const total = Math.max(1, Math.floor(ms / 60_000))
+    return total < 60 ? `${total} min` : `${Math.floor(total / 60)} h ${total % 60} min`
+  }
+
+  /** The first line of a note, short. */
+  const noteOf = (text: string) => {
+    const line = text.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? ""
+    return line.length > maxNote ? `${line.slice(0, maxNote - 1)}…` : line
+  }
+
+  const startProgress = (address: string) =>
+    Effect.gen(function*() {
+      const known = progress.get(address)
+      if (known !== undefined) {
+        known.waiting = false
+        return known
+      }
+      const started: Progress = { started: yield* Clock.currentTimeMillis, notes: [], waiting: false, posted: [], shown: "" }
+      progress.set(address, started)
+      return started
+    })
+
+  const addNote = (address: string, text: string) =>
+    Effect.gen(function*() {
+      const note = noteOf(text)
+      if (note === "") return
+      const entry = yield* startProgress(address)
+      if (entry.notes.at(-1) !== note) entry.notes = [...entry.notes, note].slice(-keptNotes)
+    })
+
+  const progressText = (address: string, entry: Progress, now: number) =>
+    [
+      speaker(address, `${entry.waiting ? "⏸ waiting for you" : "⏳ working"} · ${elapsed(now - entry.started)}`),
+      ...entry.notes.map((note) => `› ${note}`)
+    ].join("\n")
+
+  const editPosted = (posted: ReadonlyArray<Posted>, text: string) =>
+    Effect.forEach(
+      posted,
+      (post) => chat.call(post.adapter, "message.edit", { place: post.place, message: post.message, text }).pipe(Effect.ignore),
+      { discard: true }
+    )
+
+  const updateProgress = Effect.gen(function*() {
+    const now = yield* Clock.currentTimeMillis
+    for (const [address, entry] of progress) {
+      if (entry.posted.length === 0 && now - entry.started < showProgressAfter) continue
+      const text = progressText(address, entry, now)
+      if (text === entry.shown) continue
+      entry.shown = text
+      if (entry.posted.length === 0) entry.posted = yield* postToTab(address, text)
+      else yield* editPosted(entry.posted, text)
+    }
+  })
+
+  const finishProgress = (address: string, state: string) =>
+    Effect.gen(function*() {
+      const entry = progress.get(address)
+      if (entry === undefined) return
+      progress.delete(address)
+      if (entry.posted.length === 0) return
+      const took = elapsed((yield* Clock.currentTimeMillis) - entry.started)
+      yield* editPosted(entry.posted, speaker(address, state === "done" ? `✅ worked ${took}` : `⏹ stopped after ${took}`))
+    })
+
   const onHook = (message: HookMessage) => {
     switch (message.event) {
       case "Stop":
@@ -886,6 +1095,8 @@ export const run = Effect.fnUntraced(function*(options: {
         )
       case "Notification":
         return Effect.void // permission prompts: next step
+      case "PreToolUse":
+        return message.text === undefined ? Effect.void : addNote(message.terminal, message.text)
     }
   }
 
@@ -902,7 +1113,12 @@ export const run = Effect.fnUntraced(function*(options: {
               yield* closePrompt(prompt, "answered in herdr")
             }
           }
+          for (const address of [...progress.keys()]) {
+            const state = terminals.get(address)?.status?.state
+            if (state !== "working" && state !== "blocked") yield* finishProgress(address, state ?? "gone")
+          }
           for (const terminal of event.terminals) {
+            if (terminal.status?.state === "working") yield* startProgress(terminal.address)
             if (terminal.status?.state === "blocked" && terminal.status.kind === "permission") {
               yield* openPrompt(terminal.address, terminal.status)
             }
@@ -922,6 +1138,11 @@ export const run = Effect.fnUntraced(function*(options: {
           const state = event.status?.state
           const open = prompts.get(event.address)
           if (open !== undefined && state !== "blocked") yield* closePrompt(open, "answered in herdr")
+          if (state === "working") yield* startProgress(event.address)
+          else if (state === "blocked") {
+            const entry = progress.get(event.address)
+            if (entry !== undefined) entry.waiting = true
+          } else if (state !== undefined) yield* finishProgress(event.address, state)
           if (state === undefined || state === before) return
           if (state === "blocked" && event.status?.kind === "permission") {
             return yield* openPrompt(event.address, event.status)
@@ -954,6 +1175,7 @@ export const run = Effect.fnUntraced(function*(options: {
       case "removed":
         return Effect.gen(function*() {
           terminals.delete(event.address)
+          yield* finishProgress(event.address, "gone")
           const open = prompts.get(event.address)
           if (open !== undefined) yield* closePrompt(open, "the terminal is gone")
         })
@@ -1000,20 +1222,40 @@ export const run = Effect.fnUntraced(function*(options: {
     | { readonly from: "hook"; readonly event: HookMessage }
     | { readonly from: "tick" }
     | { readonly from: "dashboard" }
+    | { readonly from: "progress" }
+    | {
+      readonly from: "start"
+      readonly adapter: string
+      readonly spaceId: string
+      readonly thread: string
+      readonly agent: string
+      readonly name: string
+    }
   const dashboardTicks = options.dashboardEvery === undefined
     ? Stream.empty
     : Stream.tick(options.dashboardEvery).pipe(Stream.map((): Input => ({ from: "dashboard" })))
+  const progressTicks = options.progressEvery === undefined
+    ? Stream.empty
+    : Stream.tick(options.progressEvery).pipe(Stream.map((): Input => ({ from: "progress" })))
   yield* Stream.mergeAll([
     core.events.pipe(Stream.map((event): Input => ({ from: "core", event }))),
     chat.events.pipe(Stream.map((event): Input => ({ from: "chat", event }))),
     options.hooks.pipe(Stream.map((event): Input => ({ from: "hook", event }))),
     Stream.tick(sweepEvery).pipe(Stream.drop(1), Stream.map((): Input => ({ from: "tick" }))),
-    dashboardTicks
+    dashboardTicks,
+    progressTicks,
+    Stream.fromQueue(later)
   ], { concurrency: "unbounded" }).pipe(
     Stream.runForEach((input) => {
       switch (input.from) {
         case "dashboard":
           return updateDashboards
+        case "progress":
+          return updateProgress
+        case "start":
+          return startTab(input.adapter, input.spaceId, input.thread, input.agent, input.name).pipe(
+            Effect.catch((error) => Effect.logWarning(`cannot open a tab for a new thread: ${error.message}`))
+          )
         case "core":
           return onCore(input.event).pipe(Effect.andThen(input.event._tag === "other" ? Effect.void : markDirty))
         case "chat":

@@ -29,8 +29,11 @@ with a note in the release.
 - **0.2** Split tabs (several agents in one tab's thread), several machines.
 - **0.3** Docs and this site, `doctor --fix`, adapters without rooms, no
   stalls behind Discord's rate limits.
+- **0.4** Telegram (topics as tabs, the bot's chat as the control room); a
+  long turn's progress in one live status message; the first message of a
+  new thread becomes its agent's task; `enabled` and `dashboard` switches.
 
-## 0.4: proven on real use
+## 0.5: proven on real use
 
 What works in tests has to work in a real day.
 
@@ -45,18 +48,19 @@ What works in tests has to work in a real day.
 - [ ] Supported herdr versions written down and checked by `doctor`
 - [ ] Update from an older herdr-link without losing a thread
 
-## 0.5: a second chat app
+## 0.6: a second chat app
 
 The protocol claims to be chat-agnostic. A second adapter proves it, and
 whatever it finds missing goes in before the freeze.
 
-- [ ] A Telegram adapter (forum topics as threads, the bot's private chat as
-      the control room)
+- [x] A Telegram adapter (forum topics as threads, the bot's private chat as
+      the control room) (0.4.0)
+- [ ] `init` sets up Telegram too
 - [ ] An adapter test kit: a fake bridge that runs an adapter through the
       whole protocol, so adapter authors know theirs works
 - [ ] Protocol fixes the second adapter asks for, while they are still cheap
 
-## 0.6: more agents, better on the phone
+## 0.7: more agents, better on the phone
 
 - [ ] More agents with verified keys: Codex CLI, Gemini CLI, opencode
 - [ ] `/screen` that follows the agent for a while instead of one snapshot

@@ -8,10 +8,10 @@ From nothing to answering your agents from your phone, in about ten minutes.
   herdr-core runs your agents, the herdr app holds your spaces and tabs. No
   herdr yet? `init` offers to install it with herdr's official installer.
 - **Node 24** or newer (`node --version`).
-- **A chat app** to talk to your agents from. Today that's **Discord**: an
-  account and a server of your own. A new, empty server is best: the bot only
-  touches what it creates, but channel access means running code on your
-  computer, so keep it to yourself.
+- **A chat app** to talk to your agents from: **Discord** (an account and a
+  server of your own) or **Telegram** (a group of your own). A new, empty one
+  is best: the bot only touches what it creates, but access to it means
+  running code on your computer, so keep it to yourself.
 
 ## 1. Install herdr-link
 
@@ -22,10 +22,10 @@ npm install -g @thl-ai/herdr-link
 ## 2. Connect a chat app
 
 herdr-link talks to chat apps through **adapters**, small programs that
-translate between herdr-link and one chat app. It ships with one today:
-**Discord**.
+translate between herdr-link and one chat app. Two come with it: **Discord**
+and **Telegram**. You can run both at once.
 
-> **Using something else?** Telegram, Slack, Matrix, your own: an adapter is
+> **Using something else?** Slack, Matrix, your own: an adapter is
 > any program, in any language, that speaks a small JSON-RPC protocol on
 > stdin and stdout. [Writing an adapter](adapters.md) has the protocol, a
 > 50-line example to start from, and how to plug it in. If you write one,
@@ -48,6 +48,32 @@ The one step you do by hand: Discord doesn't let programs create bots.
 
 You don't need to turn on intents or invite the bot yet: `init` does the
 first and walks you through the second.
+
+### Telegram: the bot and the group
+
+Every herdr tab becomes a **topic** of one group of yours (named
+`✳️space / tab`); your private chat with the bot is the control room.
+
+1. Talk to [@BotFather](https://t.me/BotFather): `/newbot`, pick a name and a
+   username ending in `bot`, copy the token. Put it in
+   `~/.config/herdr-link/.env` as a line `TELEGRAM_TOKEN=…`.
+2. Create a group and turn on **Topics** in its settings.
+3. Add the bot to the group as an **admin** with **Manage topics** (it needs
+   nothing else).
+4. Back in BotFather: `/mybots` → your bot → **Bot Settings** → **Allow
+   Groups?** → turn groups off, so nobody can add it anywhere else. It stays
+   in yours.
+5. Write something in the group, and press **Start** in your private chat with
+   the bot (it can't write to you before that).
+6. Run `herdr-link telegram`: it checks the group and prints the config
+   section with your group's and your own ID.
+
+`init` sets up Discord. For Telegram alone, skip `init`'s bot questions by
+writing the config yourself: copy [`config.example.toml`](../config.example.toml)
+to `~/.config/herdr-link/config.toml`, keep your agents, replace the Discord
+section with the one `herdr-link telegram` printed, then run
+`herdr-link hooks install` and `herdr-link service install`. To add Telegram
+next to Discord, add the section and run `herdr-link service install`.
 
 ## 3. Run init
 
@@ -108,10 +134,10 @@ What happens behind the questions:
 - **Background:** a launchd agent on macOS or a systemd user unit on Linux, so
   herdr-link starts at login and comes back if it crashes.
 
-## 4. Finish in Discord
+## 4. Finish in your chat app
 
-Within a minute, each herdr space shows up as a private category, with a
-channel per tab. Then:
+**Discord:** within a minute, each herdr space shows up as a private
+category, with a channel per tab. Then:
 
 1. **Notifications:** right-click each of the bot's categories → **Notification
    Settings** → **All Messages**, so your phone pings you.
@@ -119,17 +145,27 @@ channel per tab. Then:
    commands only for yourself.
 3. On your phone, install the Discord app and sign in.
 
+**Telegram:** a topic per tab appears in your group; the commands are in the
+bot's `/` menu. Nothing else to set.
+
 ## 5. Try it
 
 - **Talk to an agent:** write in a tab's channel. 👀 means it was typed into
-  the agent; its reply arrives in the same channel when it is done.
+  the agent; its reply arrives in the same channel when it is done. On a long
+  turn, one status message shows how long it has been working and its latest
+  notes, edited in place (no extra pings).
 - **Approve something:** when the agent asks for permission, the channel gets
   🔐 with **Allow**, **Allow always** and **Deny**.
 - **Send a screenshot:** it lands beside the agent, which gets its path.
 - **Start new work:** create a channel `✳️fix-login` in a space's category: a
   new tab opens with Claude. Without an emoji, the bot asks who works there.
+  On Telegram, create a topic `✳️api / fix-login` (or just `fix-login`, and
+  the bot asks which space); the message you create it with becomes the
+  agent's first task. Closing or deleting a topic closes its tab.
 - **Use the control room:** DM the bot a task and pick a space; a new tab
-  starts on it. The DM also holds a live dashboard of every agent.
+  starts on it. The DM also holds a live dashboard of every agent
+  (`dashboard = false` in the adapter's section turns it off; `/status` still
+  answers).
 - **Commands:** `/status` anywhere, `/screen` in a tab's channel, `/space new`
   for a new herdr space.
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>herdr-link: your herdr agents, in your chat app</title>
-  <meta name="description" content="Steer the coding agents running in herdr from your phone: their replies, permission prompts with Allow / Deny, new tabs, in the chat app you already use. Discord built in, any chat through adapters.">
+  <meta name="description" content="Steer the coding agents running in herdr from your phone: their replies, permission prompts with Allow / Deny, new tabs, in the chat app you already use. Discord and Telegram built in, any chat through adapters.">
   <meta property="og:title" content="herdr-link">
   <meta property="og:description" content="Your herdr agents, in your chat app.">
   <meta property="og:image" content="https://raw.githubusercontent.com/THL-AI/herdr-link/main/assets/logo-1024.png">
@@ -176,7 +176,7 @@
         <h1>Your herdr agents, in your chat app.</h1>
         <p class="lead">Every herdr space becomes a private room, every tab a thread. Your agents' replies,
           "done" and "needs you" reach your phone; permission prompts come with Allow and Deny; a new
-          thread opens a new tab. Discord is built in, and any chat app plugs in as an adapter.</p>
+          thread opens a new tab. Discord and Telegram are built in, and any chat app plugs in as an adapter.</p>
         <div class="install">
           <code id="cmd"><span class="p">$ </span>npm install -g @thl-ai/herdr-link</code>
           <button class="copy" data-copy="npm install -g @thl-ai/herdr-link">Copy</button>
@@ -251,7 +251,7 @@
         <div class="node">
           <div class="tag">your chat app</div>
           <h3>Rooms, threads, buttons</h3>
-          <p>Push notifications, history and buttons from the app on your phone. Discord built in.</p>
+          <p>Push notifications, history and buttons from the app on your phone. Discord and Telegram built in.</p>
         </div>
       </div>
     </div>
@@ -278,7 +278,7 @@
         <h2>Bring your own chat app</h2>
         <p class="sub">Adapters are separate programs, in any language, speaking a small JSON-RPC protocol on
           stdin and stdout. The bridge does everything herdr-specific; an adapter only knows its platform.
-          Discord is one of them.</p>
+          Discord and Telegram are two of them.</p>
         <ul class="plain">
           <li><strong>Rooms, threads, buttons:</strong> the adapter maps them to what its app has.</li>
           <li><strong>Capabilities:</strong> no buttons or no rooms? The bridge works around it.</li>

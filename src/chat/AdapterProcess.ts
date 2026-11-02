@@ -41,8 +41,9 @@ const environment = (section: AdapterSection) => {
 }
 
 /** Adapters shipped in this repo, runnable by name without being on PATH. */
-const builtIn: Record<string, string> = {
-  "herdr-link-discord": fileURLToPath(new URL("../../bin/herdr-link-discord.mjs", import.meta.url))
+export const builtIn: Record<string, string> = {
+  "herdr-link-discord": fileURLToPath(new URL("../../bin/herdr-link-discord.mjs", import.meta.url)),
+  "herdr-link-telegram": fileURLToPath(new URL("../../bin/herdr-link-telegram.mjs", import.meta.url))
 }
 
 const resolveCommand = (command: AdapterSection["command"]): readonly [string, ...Array<string>] => {

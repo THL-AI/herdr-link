@@ -8,6 +8,7 @@ import { Effect } from "effect"
 import { existsSync, readFileSync } from "node:fs"
 import { connect } from "node:net"
 import * as Hooks from "../bridge/Hooks.ts"
+import { builtIn } from "../chat/AdapterProcess.ts"
 import * as BridgeConfig from "../Config.ts"
 import * as Config from "./config.ts"
 import * as Discord from "./discord.ts"
@@ -192,12 +193,16 @@ const checkDiscord = async (section: BridgeConfig.AdapterSection): Promise<Array
 const checkAdapters = async (config: BridgeConfig.Config): Promise<Group> => {
   const findings: Array<Finding> = []
   for (const [name, section] of Object.entries(config.adapters)) {
+    if (section.enabled === false) {
+      findings.push(okay(`${name}: off (enabled = false)`))
+      continue
+    }
     const program = section.command[0]
     if (program === "herdr-link-discord") {
       findings.push(...(await checkDiscord(section)).map((f) => ({ ...f, text: `${name}: ${f.text}` })))
     } else {
       findings.push(
-        Probe.onPath(program) || existsSync(program)
+        program in builtIn || Probe.onPath(program) || existsSync(program)
           ? okay(`${name}: ${program}`)
           : fail(`${name}: ${program} is not found`, "Install that adapter, or fix `command` in the config.")
       )
@@ -218,7 +223,9 @@ const checkHooks = (): Group => {
     else if (state === "absent") findings.push(okay(`${agent}: not on this machine`))
     else {
       findings.push(fail(
-        `${agent}: hook ${state === "stale" ? "points to another install" : "missing"}: replies won't reach the chat`,
+        state === "stale"
+          ? `${agent}: hook is outdated or points to another install`
+          : `${agent}: hook missing: replies won't reach the chat`,
         "Run: herdr-link hooks install",
         installHooks
       ))

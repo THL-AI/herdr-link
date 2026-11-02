@@ -49,6 +49,24 @@ old process is left: `herdr-link service uninstall`, then install it again.
 Two bridges share one bot. Give each computer its own bot (`herdr-link init`
 on it) and set `machine` in each config.
 
+**Telegram: the adapter stops with "turn on Topics" or "make the bot an admin".**
+The group needs Topics on, and the bot must be an admin with Manage topics.
+`herdr-link telegram` checks both.
+
+**Telegram: "another program is reading this bot's updates".**
+Only one program at a time may read a bot's messages: a second herdr-link, a
+webhook or another tool uses the same token. Stop it, or make a new token
+with `/revoke` in BotFather.
+
+**Telegram: a deleted topic's tab is still open.**
+Telegram doesn't tell bots about deleted topics; herdr-link checks its topics
+every minute, so the tab closes within a minute. Closing the topic acts at
+once.
+
+**Too many messages in the private chat.**
+The live dashboard is one message edited in place. If you'd rather ask for it,
+set `dashboard = false` in the adapter's section and use `/status`.
+
 **Grok shows "Sign in to Grok".**
 Grok isn't signed in on this machine. Start `grok` in a tab and finish the
 sign-in in the browser.

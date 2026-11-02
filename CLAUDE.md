@@ -18,7 +18,9 @@ pnpm start            # the bridge in the foreground (= herdr-link run)
 
 The `herdr-link` CLI (`src/cli/`): `init` (setup wizard: token, intent, owner
 and guild found through the Discord API, agents on PATH, config + `.env`,
-hooks, service), `doctor [--fix] [--yes]` (every check knows its fix: hooks,
+hooks, service; Discord only), `telegram` (reads the bot's recent updates:
+groups with topics/admin checks and user ids, prints the config section),
+`doctor [--fix] [--yes]` (every check knows its fix: hooks,
 service, Message Content intent, `hc server start`, `init`; installing herdr
 through its official script `curl -fsSL https://releases.herdr.dev/core/install.sh | sh`
 (app: `.../app/install.sh`) only after asking), `run`, `service install | uninstall | status |
@@ -42,7 +44,7 @@ lists what goes in. CI runs on Ubuntu and macOS.
         ⇅ JSON-RPC over the hc unix socket          ⇅ herdr-app CLI
  herdr-core (terminals, statuses, send/keys/read/put, events, docs)
         ⇡ one JSON line per agent turn
- shared agent hook (Claude Code / Grok `Stop`, `StopFailure`, `Notification`)
+ shared agent hook (Claude Code / Grok `Stop`, `StopFailure`, `Notification`, `PreToolUse`)
 ```
 
 Rule: the bridge core never says "Discord", "channel" or "category". It speaks
@@ -69,6 +71,9 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   (id mapping in the core doc `herdr-link`), `Hooks.ts` (the hook socket),
   `Commands.ts`, `Text.ts` (splitting at `maxText`, code fences balanced).
 - `src/adapters/discord/main.ts`: the Discord adapter, its own process.
+- `src/adapters/telegram/`: the Telegram adapter (`main.ts`: Bot API through
+  `fetch` and long polling, no SDK; `Text.ts`: Markdown → Telegram HTML,
+  command arguments parsed from text, the `/` menu).
 - `src/cli/`: the `herdr-link` command (`main.ts` dispatches; `init`,
   `doctor`, `service`, `hooks`, Discord REST for setup, local probes).
 - `docs/`: user docs (configuration, agents, writing an adapter,
@@ -103,6 +108,13 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   machine are also used in the dashboard, topics and quick-task choices.
 - **Agent → owner:** the hook's `Stop` reply goes to the thread. `done` without
   a hook reply within 4 s → "✅ Done"; `blocked` → "⚠️ Needs you".
+- **Progress:** a turn still `working` after 45 s gets one status message in
+  its thread ("⏳ working · 6 min" and the agent's last 3 notes: the first line
+  of its text between actions, which the hook reads from the transcript's end
+  on `PreToolUse`). It is edited, never reposted (edits don't push), at most
+  every 15 s and only on a change; `blocked` shows "⏸ waiting for you"; at
+  the end it shrinks to "✅ worked 12 min" / "⏹ stopped after 3 min". Quick
+  turns get none. In memory: after a restart a working agent starts a new one.
 - **Permission prompts** (`blocked` + kind `permission`) → Allow / Allow
   always / Deny buttons for the keys the agent has in config, sent with
   `terminal.keys`; the message is edited to the outcome, or to "answered in
@@ -112,8 +124,13 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
 - **New threads:** a thread the owner creates in one of the bot's space rooms
   → a new tab there (`herdr-app do tab.new`). A leading agent emoji (`✳️api`,
   compared without U+FE0F) picks the agent; otherwise "Who works here?" with
-  buttons and logo reactions. The thread is linked before the layout change
-  lands, so the sync renames it instead of making another.
+  buttons and logo reactions. Without rooms, the name says the space
+  (`✳️api / fix`), else "Which space?" first. The tab starts 2 s after the
+  thread appears (scheduled through the loop's own input queue), and messages
+  written in the thread until then (or while a question is open) become its
+  agent's first task (`task` of `tab.new`): Telegram creates a topic only
+  together with its first message. The thread is linked before the layout
+  change lands, so the sync renames it instead of making another.
 - **Closed in herdr:** a tab's thread moves to `📦 archive` and is deleted
   after 7 days (hourly sweep, at most 45 kept); a closed space's room is
   deleted. An empty layout archives nothing (likely the app restarting).
@@ -123,8 +140,10 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
 - **Commands:** `/screen` (the tab's screen), `/status`, `/space new name
   folder agent? task?`.
 - **DM = control room:** a dashboard message edited at most every 10 s (edits
-  don't push; reposted if deleted) and quick tasks: a DM text → "where?" with
-  the spaces → a new tab whose agent gets the text as its first message.
+  don't push; reposted only when the edit says NotFound; `dashboard = false`
+  in an adapter's section turns it off, editing the last one to say so once)
+  and quick tasks: a DM text → "where?" with the spaces → a new tab whose
+  agent gets the text as its first message.
 - Later idea: give a client read-only access to one project channel.
 
 ## Chat protocol (v1)
@@ -154,7 +173,9 @@ notifications; stderr is the adapter's log. Exported for adapter authors as
 run <path>`), written by `herdr-link init`, decoded with Effect Schema,
 unknown keys rejected. Secrets live in `~/.config/herdr-link/.env` (0600) or a
 checkout's `.env`, never in the TOML. See
-`config.example.toml`. Agent keys verified live:
+`config.example.toml`. Bridge keys of an adapter section: `command`, `env`,
+`enabled` (false: not started), `dashboard` (false: no DM dashboard); the
+rest goes to the adapter in `hello`. Agent keys verified live:
 
 - Claude Code 2.1.316: `1` Yes, `2` Yes and don't ask again, `3` auto mode,
   `4` No, `esc` cancels (= No; status goes `idle`, not `done`). A new folder
@@ -211,6 +232,10 @@ checkout's `.env`, never in the TOML. See
   read `transcript_path`) or `lastAssistantMessage` (Grok, which also fires a
   session-end `Stop` with `reason` ≠ `end_turn`). Subagent stops carry
   `agent_id` / `subagentType` and are skipped.
+- `PreToolUse` fires before every tool call (no matcher = all tools); the hook
+  reads only the transcript's last 256 KB (transcripts reach tens of MB) and
+  waits at most 0.5 s for the bridge. In a Claude Code transcript the text
+  between actions is its own `assistant` line, written before the `tool_use`.
 
 ## Stack
 
@@ -219,6 +244,24 @@ Node 24, pnpm, TypeScript 7 (`tsc --noEmit`, strict,
 `verbatimModuleSyntax`, `.ts` imports), tsx, Effect 4, vitest 5 +
 `@effect/vitest`, discord.js 14. Effect 4 differs a lot from v3: read
 `node_modules/effect/AGENTS.md` and its ai-docs before writing Effect code.
+
+Telegram (Bot API, verified live 2026-11-03): one forum supergroup, the bot an
+admin with Manage topics; `owner` / `group` in the section, `TELEGRAM_TOKEN`.
+A topic is created by clients only with its first message
+(`forum_topic_created`, then that message). Bots never hear of a deleted
+topic: `editForumTopic` with the same name answers `TOPIC_NOT_MODIFIED` for a
+live one and `TOPIC_ID_INVALID` for a deleted one, so the adapter checks its
+topics every minute and reports `thread.deleted`; a closed topic
+(`forum_topic_closed`) is reported at once and then deleted. Sending to a
+deleted topic fails ("message thread not found"), never lands in General. In
+a topic, a message that replies to nothing has `reply_to_message` = the
+topic's creation message. HTML parse mode (`<b>`, `<pre><code
+class="language-x">`, `<blockquote>`); refused markup is resent plain. Text
+4096, callback data 64 bytes (longer action ids get short keys in memory),
+rate limits ~20 messages a minute per group (429 `retry_after`: waited up to
+20 s). One `getUpdates` reader per token (409 otherwise). Private chats with
+the bot may have topics on (messages carry a thread id; replies to the chat
+id land fine).
 
 Discord limits: 2000 chars per message, ~5 messages / 5 s per channel, 500
 channels per guild, 50 per category, **2 renames per channel per 10 minutes**

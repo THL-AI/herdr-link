@@ -48,8 +48,10 @@ One section per chat app. The bridge starts each as its own process.
 
 | key | |
 | --- | --- |
-| `command` | the adapter's argv. Built-in adapters are named by their command (`herdr-link-discord`) and need nothing on PATH. |
+| `command` | the adapter's argv. Built-in adapters are named by their command (`herdr-link-discord`, `herdr-link-telegram`) and need nothing on PATH. |
 | `env` | environment variables the adapter may see, besides `PATH`, `HOME`, `USER`, `LANG`…: its token, for instance. Values come from your environment or the `.env` file. |
+| `enabled` | `false` turns the adapter off without deleting its section. Default `true`. |
+| `dashboard` | `false`: no live status message in your private chat with the bot; `/status` still shows it when you ask. Default `true`. |
 | anything else | sent to the adapter in `hello`: its own settings. |
 
 The Discord adapter's settings:
@@ -58,6 +60,22 @@ The Discord adapter's settings:
 | --- | --- |
 | `owner` | your Discord user ID: the only person the bot listens to |
 | `guild` | the server ID where your spaces become categories |
+
+The Telegram adapter's settings (`herdr-link telegram` finds both; env
+`TELEGRAM_TOKEN`):
+
+| key | |
+| --- | --- |
+| `owner` | your Telegram user ID: the only person the bot listens to |
+| `group` | the ID of your group (`-100…`): a supergroup with **Topics** on, where every herdr tab becomes a topic `✳️space / tab` |
+
+```toml
+[adapters.telegram]
+command = ["herdr-link-telegram"]
+env = ["TELEGRAM_TOKEN"]
+owner = "123456789"
+group = "-1001234567890"
+```
 
 Other adapters document their own; see [writing an adapter](adapters.md).
 

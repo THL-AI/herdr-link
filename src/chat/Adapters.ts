@@ -5,7 +5,7 @@
 import { Deferred, Duration, Effect, Layer, Queue, Schedule, Stream } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import * as Commands from "../bridge/Commands.ts"
-import { type AdapterSection, BridgeConfig } from "../Config.ts"
+import { type AdapterSection, BridgeConfig, enabledAdapters } from "../Config.ts"
 import type { CommandSpec } from "../protocol/Chat.ts"
 import { ErrorCode } from "../protocol/JsonRpc.ts"
 import type { AdapterToBridge, BridgeToAdapter, Params, Result } from "../protocol/Methods.ts"
@@ -125,6 +125,6 @@ export const layer: Layer.Layer<Chat, never, BridgeConfig | ChildProcessSpawner.
   Chat,
   Effect.gen(function*() {
     const config = yield* BridgeConfig
-    return yield* make({ adapters: config.adapters, commands: Commands.specs(config.agents ?? {}) })
+    return yield* make({ adapters: enabledAdapters(config.adapters), commands: Commands.specs(config.agents ?? {}) })
   })
 )

@@ -10,7 +10,7 @@ import { dirname, join } from "node:path"
 
 export const HookMessage = Schema.Struct({
   terminal: Schema.NonEmptyString,
-  event: Schema.Literals(["Stop", "StopFailure", "Notification"]),
+  event: Schema.Literals(["Stop", "StopFailure", "Notification", "PreToolUse"]),
   text: Schema.optionalKey(Schema.String),
   kind: Schema.optionalKey(Schema.String),
   message: Schema.optionalKey(Schema.String),

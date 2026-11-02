@@ -8,7 +8,7 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { hookFile } from "./paths.ts"
 
-const events = ["Stop", "StopFailure", "Notification"] as const
+const events = ["Stop", "StopFailure", "Notification", "PreToolUse"] as const
 /** Ours, including the name it had before the project was renamed. */
 const markers = ["herdr-link-hook.mjs", "herdr-bridge-hook.mjs"]
 const claudeSettings = join(homedir(), ".claude", "settings.json")
@@ -66,14 +66,21 @@ export const status = () => {
       const commands = events.flatMap((event) =>
         ((settings.hooks?.[event] ?? []) as ReadonlyArray<Group>).flatMap((g) => g.hooks ?? []).filter(isOurs)
       ).map((hook) => String(hook.command))
-      return commands.length === 0 ? "missing" : commands.every((c) => c.includes(hookFile)) ? "ok" : "stale"
+      if (commands.length === 0) return "missing"
+      const everyEvent = events.every((event) =>
+        ((settings.hooks?.[event] ?? []) as ReadonlyArray<Group>).some((g) => (g.hooks ?? []).some(isOurs))
+      )
+      return everyEvent && commands.every((c) => c.includes(hookFile)) ? "ok" : "stale"
     })()
     : "absent"
   const grok = !existsSync(grokDir)
     ? "absent"
     : !existsSync(grokHooks)
     ? "missing"
-    : readFileSync(grokHooks, "utf8").includes(hookFile)
+    : (() => {
+      const text = readFileSync(grokHooks, "utf8")
+      return text.includes(hookFile) && events.every((event) => text.includes(`"${event}"`))
+    })()
     ? "ok"
     : "stale"
   return { claude, grok } as const

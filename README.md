@@ -15,12 +15,12 @@ threads open new tabs, and your private chat with the bot is a control room
 with a live dashboard.
 
 Chat apps plug in as **adapters**: separate programs speaking a small JSON-RPC
-protocol, in any language. **Discord** is built in; [write your own](docs/adapters.md)
+protocol, in any language. **Discord** and **Telegram** are built in; [write your own](docs/adapters.md)
 for anything else.
 
 ```
  your chat app (phone, desktop)
-        ⇅  adapter (Discord built in, or your own)
+        ⇅  adapter (Discord, Telegram, or your own)
  herdr-link  ⇠  shared agent hook (Claude Code, Grok, …)
         ⇅  herdr-core, herdr app
  your agents in herdr
@@ -33,6 +33,7 @@ for anything else.
 | a space | a private room (a category only you and the bot see) |
 | a tab | a thread named with its agent's emoji (a channel `✳️main`) |
 | the agent replies | its reply in the thread |
+| the agent works on a long turn | one status message, edited live: time spent and its latest notes |
 | the agent finishes / needs you | "✅ Done" / "⚠️ Needs you" |
 | a permission prompt | 🔐 with Allow, Allow always, Deny |
 | a tab or space closed | its thread moves to `📦 archive`, deleted after 7 days |
@@ -72,6 +73,7 @@ whole path, bot included: [getting started](docs/getting-started.md).
 herdr-link doctor [--fix]        # check every piece; --fix repairs what it can
 herdr-link service status | logs | install | uninstall
 herdr-link hooks install | uninstall
+herdr-link telegram              # find the ids a Telegram setup needs
 herdr-link run                   # in the foreground instead of the service
 ```
 
@@ -101,6 +103,15 @@ categories to *All Messages* to get pushes.
 4. `herdr-link hooks install`, then `herdr-link service install`.
 
 </details>
+
+### Telegram
+
+Every herdr tab becomes a topic `✳️space / tab` in a group of yours (Topics
+on, the bot an admin with *Manage topics*); your private chat with the bot is
+the control room. Create the bot with @BotFather, put `TELEGRAM_TOKEN=...` in
+`~/.config/herdr-link/.env`, write in the group and press *Start* in the
+bot's chat, then `herdr-link telegram` prints the config section to add.
+Step by step: [getting started](docs/getting-started.md#telegram-the-bot-and-the-group).
 
 ## More than one computer
 
