@@ -1,4 +1,8 @@
-# herdr-link
+<p align="center">
+  <img src="https://raw.githubusercontent.com/THL-AI/herdr-link/main/assets/logo.svg" width="128" height="128" alt="herdr-link logo: the herdr ram with a link">
+</p>
+
+<h1 align="center">herdr-link</h1>
 
 Run your coding agents in herdr on your computer, steer them
 from your phone.
@@ -133,4 +137,4 @@ are in [CLAUDE.md](CLAUDE.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The ram in the logo is herdr's own.
