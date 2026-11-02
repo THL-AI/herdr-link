@@ -17,7 +17,8 @@ const pages = [
   { file: "configuration", label: "Configuration" },
   { file: "agents", label: "Agents" },
   { file: "adapters", label: "Writing an adapter" },
-  { file: "troubleshooting", label: "Troubleshooting" }
+  { file: "troubleshooting", label: "Troubleshooting" },
+  { file: "roadmap", label: "Roadmap" }
 ]
 
 const slug = (text) =>
@@ -90,6 +91,8 @@ h2 { font-size: 24px; letter-spacing: -.01em; margin: 44px 0 12px; padding-top: 
 h3 { font-size: 18px; margin: 28px 0 8px; }
 blockquote { margin: 20px 0; padding: 14px 18px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 12px 12px 0; }
 blockquote p { margin: 0; }
+li:has(> input[type=checkbox]) { list-style: none; margin-left: -22px; }
+li > input[type=checkbox] { margin: 0 8px 0 0; accent-color: var(--accent); }
 h2.step a { display: flex; align-items: center; gap: 12px; }
 h2.step .n { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--bg); display: grid; place-items: center; font: 700 17px var(--sans); }
 h1 a.anchor, h2 a.anchor, h3 a.anchor { color: inherit; text-decoration: none; }

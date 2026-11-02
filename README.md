@@ -126,6 +126,7 @@ the bot asks who it is for.
 - [Agents](docs/agents.md): adding an agent, finding its keys, the hook
 - [Writing an adapter](docs/adapters.md): bring herdr-link to another chat app
 - [Troubleshooting](docs/troubleshooting.md): `doctor` and common problems
+- [Roadmap](docs/roadmap.md): the way to 1.0
 
 ## Security
 

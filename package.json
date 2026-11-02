@@ -1,6 +1,6 @@
 {
   "name": "@thl-ai/herdr-link",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Steer the coding agents running in herdr from Discord (and any chat app, through adapters)",
   "license": "MIT",
   "type": "module",
