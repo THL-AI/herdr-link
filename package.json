@@ -1,0 +1,55 @@
+{
+  "name": "herdr-link",
+  "version": "0.1.0",
+  "description": "Steer the coding agents running in herdr from Discord (and any chat app, through adapters)",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/THL-AI/herdr-link.git"
+  },
+  "homepage": "https://github.com/THL-AI/herdr-link#readme",
+  "bugs": "https://github.com/THL-AI/herdr-link/issues",
+  "keywords": [
+    "herdr",
+    "discord",
+    "claude-code",
+    "grok",
+    "coding-agents",
+    "effect"
+  ],
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "herdr-link": "bin/herdr-link.mjs",
+    "herdr-link-discord": "bin/herdr-link-discord.mjs"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
+    "start": "node bin/herdr-link.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "schema": "tsx src/schema.ts > schema/chat.openrpc.json",
+    "hooks:install": "node hooks/install.mjs",
+    "hooks:uninstall": "node hooks/install.mjs --uninstall",
+    "service:install": "node scripts/service.mjs install",
+    "service:uninstall": "node scripts/service.mjs uninstall",
+    "service:status": "node scripts/service.mjs status"
+  },
+  "dependencies": {
+    "@effect/platform-node": "^4.1.2",
+    "discord.js": "^14.28.0",
+    "effect": "^4.1.2"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.87.5",
+    "@effect/vitest": "^4.1.2",
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,0 +1,1055 @@
+{
+  "openrpc": "1.3.2",
+  "info": {
+    "title": "herdr-link Chat protocol",
+    "version": "1",
+    "description": "JSON-RPC 2.0 over the adapter's stdin/stdout, one message per line. Both sides send requests and notifications. The bridge spawns the adapter and sends `hello` first. stderr is log output. Error codes: -32700 ParseError (The line is not valid JSON.); -32600 InvalidRequest (The JSON is not a valid JSON-RPC 2.0 message.); -32601 MethodNotFound (Unknown method.); -32602 InvalidParams (Params do not match the schema.); -32603 InternalError (Unexpected failure while handling the request.); -32001 Unsupported (The method needs a capability the adapter did not declare.); -32002 NotFound (The room, thread or message no longer exists on the platform.); -32003 InvalidConfig (hello: the adapter rejected its config section.); -32004 UnsupportedProtocol (hello: the adapter does not speak this protocol version.)"
+  },
+  "methods": [
+    {
+      "name": "hello",
+      "description": "First message, sent once. The adapter validates `config` (failing with InvalidConfig), registers `commands` if it supports them, connects to its platform and only then answers.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "protocol",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ProtocolVersion"
+          }
+        },
+        {
+          "name": "config",
+          "required": true,
+          "schema": {
+            "type": "object",
+            "description": "The adapter's section of the bridge config, minus `command`."
+          }
+        },
+        {
+          "name": "commands",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommandSpec"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "hello.result",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "protocol": {
+              "$ref": "#/components/schemas/ProtocolVersion"
+            },
+            "adapter": {
+              "$ref": "#/components/schemas/AdapterInfo"
+            },
+            "capabilities": {
+              "$ref": "#/components/schemas/Capabilities"
+            }
+          },
+          "required": [
+            "protocol",
+            "adapter",
+            "capabilities"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    {
+      "name": "room.ensure",
+      "description": "Make sure a private room (owner and bot only) exists with this name. With `room`, reuse it and rename if needed; if it is gone or absent, create a new one. Returns the id to store.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "room",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/RoomId"
+          }
+        },
+        {
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ],
+      "result": {
+        "name": "room.ensure.result",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": {
+              "$ref": "#/components/schemas/RoomId"
+            },
+            "created": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "room",
+            "created"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    {
+      "name": "thread.ensure",
+      "description": "Same as room.ensure for a thread inside `room` (omitted when the adapter has no rooms); moves it there if it lives elsewhere. Updates name and topic when given; `name` is required only to create one.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "room",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/RoomId"
+          }
+        },
+        {
+          "name": "thread",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        },
+        {
+          "name": "name",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "name": "topic",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "thread.ensure.result",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "thread": {
+              "$ref": "#/components/schemas/ThreadId"
+            },
+            "created": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "thread",
+            "created"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    {
+      "name": "thread.delete",
+      "description": "Delete a thread the adapter made, with its history. NotFound if it is already gone. The adapter does not report its own deletions as thread.deleted.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "thread",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      ],
+      "result": {
+        "name": "thread.delete.result",
+        "schema": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "name": "room.delete",
+      "description": "Delete a room the adapter made (the bridge empties it first). NotFound if it is already gone.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "room",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/RoomId"
+          }
+        }
+      ],
+      "result": {
+        "name": "room.delete.result",
+        "schema": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "name": "message.post",
+      "description": "Post a message. `text` never exceeds capabilities.maxText: the bridge splits long text.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "place",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Place"
+          }
+        },
+        {
+          "name": "text",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Markdown (the Discord subset: bold, italics, code, code blocks, links). Adapters convert or strip it."
+          }
+        },
+        {
+          "name": "files",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutgoingFile"
+            }
+          }
+        },
+        {
+          "name": "actions",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          }
+        },
+        {
+          "name": "replyTo",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/MessageId"
+          }
+        }
+      ],
+      "result": {
+        "name": "message.post.result",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    {
+      "name": "message.edit",
+      "description": "Replace the text and/or the actions of a message the adapter posted. `actions: []` removes all buttons.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "place",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Place"
+          }
+        },
+        {
+          "name": "message",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/MessageId"
+          }
+        },
+        {
+          "name": "text",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "Markdown (the Discord subset: bold, italics, code, code blocks, links). Adapters convert or strip it."
+          }
+        },
+        {
+          "name": "actions",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "message.edit.result",
+        "schema": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "name": "react",
+      "description": "Add the bot's reaction to a message.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "place",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Place"
+          }
+        },
+        {
+          "name": "message",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/MessageId"
+          }
+        },
+        {
+          "name": "emoji",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Emoji"
+          }
+        }
+      ],
+      "result": {
+        "name": "react.result",
+        "schema": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "name": "ask",
+      "description": "Post a question with choices and return at once. The owner's answer arrives later as action.pressed with the choice id, whether they pressed a button or reacted with the choice's emoji.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "place",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Place"
+          }
+        },
+        {
+          "name": "text",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "Markdown (the Discord subset: bold, italics, code, code blocks, links). Adapters convert or strip it."
+          }
+        },
+        {
+          "name": "choices",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "$ref": "#/components/schemas/Choice"
+              }
+            ],
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "ask.result",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    {
+      "name": "thread.created",
+      "description": "The owner created a thread. The bridge ignores threads outside rooms it ensured.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/adapter-to-bridge"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "room",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/RoomId"
+          }
+        },
+        {
+          "name": "thread",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        },
+        {
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    {
+      "name": "thread.deleted",
+      "description": "A thread is gone (deleted by the owner or by the platform).",
+      "tags": [
+        {
+          "$ref": "#/components/tags/adapter-to-bridge"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "thread",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      ]
+    },
+    {
+      "name": "message.received",
+      "description": "The owner wrote a message.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/adapter-to-bridge"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "place",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Place"
+          }
+        },
+        {
+          "name": "message",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/MessageId"
+          }
+        },
+        {
+          "name": "text",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "attachments",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          }
+        },
+        {
+          "name": "replyTo",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/MessageId"
+          }
+        }
+      ]
+    },
+    {
+      "name": "reaction.added",
+      "description": "The owner reacted to a message. Reactions that answer an `ask` come as action.pressed instead.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/adapter-to-bridge"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "place",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Place"
+          }
+        },
+        {
+          "name": "message",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/MessageId"
+          }
+        },
+        {
+          "name": "emoji",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Emoji"
+          }
+        }
+      ]
+    },
+    {
+      "name": "action.pressed",
+      "description": "The owner pressed a button or answered an `ask`. The adapter acknowledges the press on its platform itself.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/adapter-to-bridge"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "place",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Place"
+          }
+        },
+        {
+          "name": "message",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/MessageId"
+          }
+        },
+        {
+          "name": "action",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ActionId"
+          }
+        }
+      ]
+    },
+    {
+      "name": "command.invoked",
+      "description": "The owner ran a command from hello's `commands`. The result is the reply to show; the adapter defers it on platforms with short reply deadlines.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/adapter-to-bridge"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "place",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Place"
+          }
+        },
+        {
+          "name": "command",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "name": "args",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/CommandArgs"
+          }
+        }
+      ],
+      "result": {
+        "name": "command.invoked.result",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Markdown (the Discord subset: bold, italics, code, code blocks, links). Adapters convert or strip it."
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": true
+        }
+      }
+    }
+  ],
+  "components": {
+    "schemas": {
+      "ProtocolVersion": {
+        "type": "number",
+        "enum": [
+          1
+        ],
+        "description": "Version of the Chat protocol. Bumped only on breaking changes."
+      },
+      "CommandOption": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,32}$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "integer",
+              "boolean"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "type",
+          "required"
+        ],
+        "additionalProperties": true
+      },
+      "CommandSpec": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,32}( [a-z0-9_-]{1,32}){0,2}$",
+            "description": "Space-separated path, e.g. `space new` (Discord: command `space`, subcommand `new`)."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommandOption"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "options"
+        ],
+        "additionalProperties": true
+      },
+      "AdapterInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "additionalProperties": true
+      },
+      "Capabilities": {
+        "type": "object",
+        "properties": {
+          "rooms": {
+            "type": "boolean",
+            "description": "Threads can be grouped into rooms."
+          },
+          "direct": {
+            "type": "boolean",
+            "description": "A direct conversation with the owner exists."
+          },
+          "threadCreation": {
+            "type": "boolean",
+            "description": "The owner can create threads on the platform; the adapter reports them with thread.created."
+          },
+          "actions": {
+            "type": "boolean",
+            "description": "Messages can carry buttons."
+          },
+          "reactions": {
+            "type": "boolean"
+          },
+          "customEmoji": {
+            "type": "boolean",
+            "description": "Emoji of kind `custom` can be shown."
+          },
+          "commands": {
+            "type": "boolean",
+            "description": "Slash commands (see CommandSpec)."
+          },
+          "edit": {
+            "type": "boolean",
+            "description": "Sent messages can be edited."
+          },
+          "files": {
+            "type": "boolean",
+            "description": "Files can be sent and received."
+          },
+          "maxText": {
+            "type": "integer",
+            "maximum": 9007199254740991,
+            "exclusiveMinimum": 0,
+            "description": "Longest text of one message. The bridge splits longer text itself."
+          },
+          "maxActions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Most actions or choices on one message."
+          }
+        },
+        "required": [
+          "rooms",
+          "direct",
+          "threadCreation",
+          "actions",
+          "reactions",
+          "customEmoji",
+          "commands",
+          "edit",
+          "files",
+          "maxText",
+          "maxActions"
+        ],
+        "additionalProperties": true
+      },
+      "RoomId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Platform id of a room (Discord: category id)."
+      },
+      "ThreadId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Platform id of a thread (Discord: channel id)."
+      },
+      "Place": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "thread"
+                ]
+              },
+              "thread": {
+                "$ref": "#/components/schemas/ThreadId"
+              }
+            },
+            "required": [
+              "kind",
+              "thread"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "direct"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": true
+          }
+        ],
+        "description": "Where a message lives: a thread, or the direct conversation with the owner."
+      },
+      "OutgoingFile": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Absolute path on the bridge's machine."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": true
+      },
+      "ActionId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Chosen by the bridge for a button or choice, echoed back in action.pressed."
+      },
+      "ActionStyle": {
+        "type": "string",
+        "enum": [
+          "primary",
+          "secondary",
+          "success",
+          "danger"
+        ]
+      },
+      "Emoji": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unicode"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "custom"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Name of a custom emoji the adapter knows (e.g. an agent logo such as `claude`)."
+              }
+            },
+            "required": [
+              "kind",
+              "name"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      },
+      "Action": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ActionId"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "style": {
+            "$ref": "#/components/schemas/ActionStyle"
+          },
+          "emoji": {
+            "$ref": "#/components/schemas/Emoji"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": true,
+        "description": "A button under a message. Adapters without buttons may render it as text or a reaction."
+      },
+      "MessageId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Platform id of a message."
+      },
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ActionId"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "emoji": {
+            "$ref": "#/components/schemas/Emoji"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": true,
+        "description": "One answer of an `ask`. The adapter may offer it as a button, a reaction or both."
+      },
+      "Attachment": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Where the bridge can download the file."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "contentType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "additionalProperties": true
+      },
+      "CommandArgs": {
+        "type": "object",
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    "tags": {
+      "bridge-to-adapter": {
+        "name": "bridge-to-adapter",
+        "description": "Sent by the bridge, handled by the adapter."
+      },
+      "adapter-to-bridge": {
+        "name": "adapter-to-bridge",
+        "description": "Sent by the adapter, handled by the bridge."
+      }
+    }
+  }
+}
