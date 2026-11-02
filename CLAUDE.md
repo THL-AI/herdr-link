@@ -25,7 +25,8 @@ the pnpm scripts `hooks:install`, `service:install`… call it.
 
 Published to npm as `@thl-ai/herdr-link` (`herdr-link` is taken by an
 unrelated package) by `.github/workflows/release.yml` on a `v*` tag matching
-`package.json` (needs the `NPM_TOKEN` secret). The package ships TypeScript
+`package.json`, through npm trusted publishing (OIDC from GitHub Actions; no
+npm token, provenance included). The package ships TypeScript
 sources run through tsx (a runtime dependency); `files` in `package.json`
 lists what goes in. CI runs on Ubuntu and macOS.
 

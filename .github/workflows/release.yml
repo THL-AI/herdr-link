@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: write
-  id-token: write # npm provenance
+  id-token: write # npm trusted publishing (OIDC) and provenance: no npm token
 
 jobs:
   publish:
@@ -25,9 +25,7 @@ jobs:
       - run: pnpm test
       - name: Check the tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish --access public
       - run: gh release create "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
