@@ -51,8 +51,6 @@ npm install -g @thl-ai/herdr-link
 herdr-link init
 ```
 
-(Until the first npm release: `npm install -g github:THL-AI/herdr-link`.)
-
 `herdr-link init` walks you through the rest and only asks what it cannot find
 out: it checks herdr, takes your bot token (and tells you how to make one),
 turns on the Message Content intent, finds your user ID and the server the bot
