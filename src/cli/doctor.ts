@@ -5,7 +5,6 @@
  * after asking (or with `--yes`), installing herdr through its official script.
  */
 import { Effect } from "effect"
-import { execFileSync, spawnSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import { connect } from "node:net"
 import * as Hooks from "../bridge/Hooks.ts"
@@ -19,8 +18,7 @@ import * as Probe from "./probe.ts"
 import { bad, confirm, note, ok } from "./prompt.ts"
 import * as Service from "./service.ts"
 
-const coreInstall = "curl -fsSL https://releases.herdr.dev/core/install.sh | sh"
-const appInstall = "curl -fsSL https://releases.herdr.dev/app/install.sh | sh"
+const { coreInstall, appInstall, shell } = Probe
 const minimumNode = 24
 
 interface Fix {
@@ -68,17 +66,9 @@ const answers = (path: string) =>
     socket.once("error", () => resolve(false))
   })
 
-/** Runs a shell command in the foreground, showing its output. */
-const shell = (command: string) => {
-  const result = spawnSync("/bin/sh", ["-c", command], { stdio: "inherit" })
-  if (result.status !== 0) throw new Error(`\`${command}\` failed (exit ${result.status})`)
-}
-
 const startCore: Fix = {
   label: "start herdr-core (hc server start)",
-  run: async () => {
-    execFileSync("hc", ["server", "start"], { stdio: "inherit" })
-  }
+  run: async () => Probe.startCore()
 }
 
 const runInit: Fix = { label: "set it up (herdr-link init)", run: () => init() }

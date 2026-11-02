@@ -1,5 +1,5 @@
 /** Quick checks of the local herdr setup. */
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { connect } from "node:net"
 import { coreSocket } from "./paths.ts"
 
@@ -37,4 +37,18 @@ export const onPath = (program: string) => {
   } catch {
     return false
   }
+}
+
+/** herdr's official installers (https://herdr.dev). */
+export const coreInstall = "curl -fsSL https://releases.herdr.dev/core/install.sh | sh"
+export const appInstall = "curl -fsSL https://releases.herdr.dev/app/install.sh | sh"
+
+/** Runs a shell command in the foreground, showing its output. */
+export const shell = (command: string) => {
+  const result = spawnSync("/bin/sh", ["-c", command], { stdio: "inherit" })
+  if (result.status !== 0) throw new Error(`\`${command}\` failed (exit ${result.status})`)
+}
+
+export const startCore = () => {
+  execFileSync("hc", ["server", "start"], { stdio: "inherit" })
 }

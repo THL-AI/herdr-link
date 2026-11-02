@@ -131,7 +131,7 @@
     ul.plain li::before { content: "→"; position: absolute; left: 0; color: var(--accent); font-family: var(--mono); }
     ul.plain strong { color: var(--text); }
 
-    .docs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .docs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
     .docs a { text-decoration: none; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
     .docs a:hover { border-color: var(--accent); }
     .docs strong { display: block; margin-bottom: 4px; }
@@ -165,7 +165,7 @@
       <div class="links">
         <a class="hide-sm" href="#how">How it works</a>
         <a class="hide-sm" href="#adapters">Adapters</a>
-        <a href="docs/configuration.html">Docs</a>
+        <a href="docs/getting-started.html">Docs</a>
         <a href="https://github.com/THL-AI/herdr-link">GitHub</a>
       </div>
     </nav>
@@ -183,7 +183,7 @@
         </div>
         <p class="then">then <code>herdr-link init</code>: it asks for a bot token and sets up the rest.</p>
         <div class="ctas">
-          <a class="btn primary" href="https://github.com/THL-AI/herdr-link#install">Get started</a>
+          <a class="btn primary" href="docs/getting-started.html">Get started</a>
           <a class="btn" href="https://github.com/THL-AI/herdr-link">GitHub</a>
         </div>
       </div>
@@ -322,6 +322,7 @@
       <p class="sub">On macOS and Linux, with Node 24. <code>herdr-link doctor --fix</code> checks and repairs
         the setup, herdr included.</p>
       <div class="docs">
+        <a href="docs/getting-started.html"><strong>Getting started</strong><span>from zero to your phone</span></a>
         <a href="docs/configuration.html"><strong>Configuration</strong><span>every setting and file</span></a>
         <a href="docs/agents.html"><strong>Agents</strong><span>add one, find its keys</span></a>
         <a href="docs/adapters.html"><strong>Adapters</strong><span>bring another chat app</span></a>

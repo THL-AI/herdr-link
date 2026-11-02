@@ -23,14 +23,41 @@ export const init = async () => {
   console.log("herdr-link setup: your herdr agents in Discord.")
 
   step("1. herdr")
-  const core = await Probe.core()
+  let core = await Probe.core()
+  if (!core.ok && !Probe.onPath("hc")) {
+    bad("herdr-core is not installed")
+    if (await confirm(`  Install it now? (runs: ${Probe.coreInstall})`)) {
+      try {
+        Probe.shell(Probe.coreInstall)
+        core = await Probe.core()
+      } catch (error) {
+        bad((error as Error).message)
+      }
+    }
+  }
+  if (!core.ok && Probe.onPath("hc")) {
+    try {
+      Probe.startCore()
+      core = await Probe.core()
+    } catch {}
+  }
   if (core.ok) ok(`herdr-core ${core.version}`)
   else {
     bad(`herdr-core is not reachable (${core.error})`)
-    note("Start herdr first; the bridge waits for it, so you can still finish the setup.")
+    note("You can finish the setup; herdr-link waits for herdr-core and connects when it runs.")
   }
   if (Probe.onPath("herdr-app")) ok("herdr-app")
-  else note("herdr-app is not on PATH: new tabs from the chat and /space new will not work.")
+  else {
+    bad("the herdr app is not installed: it holds your spaces and tabs")
+    if (await confirm(`  Install it now? (runs: ${Probe.appInstall})`)) {
+      try {
+        Probe.shell(Probe.appInstall)
+        note("Open the herdr app and make a space: it shows up in the chat.")
+      } catch (error) {
+        bad((error as Error).message)
+      }
+    }
+  }
 
   step("2. Discord bot")
   let token = process.env.DISCORD_TOKEN ?? Config.readEnv(envFile, "DISCORD_TOKEN")
@@ -49,6 +76,7 @@ export const init = async () => {
     }
   }
 
+  const hadMessageContent = Discord.hasMessageContent(app)
   while (!Discord.hasMessageContent(app)) {
     try {
       app = await Discord.enableMessageContent(key, app)
@@ -60,7 +88,7 @@ export const init = async () => {
       app = await Discord.application(key)
     }
   }
-  if (Discord.hasMessageContent(app)) ok("Message Content intent")
+  if (hadMessageContent) ok("Message Content intent")
   if (app.bot_public) {
     bad("the bot is public: anyone could add it to their server")
     note(`Set Install Link to None, then turn off Public Bot: https://discord.com/developers/applications/${app.id}/installation`)

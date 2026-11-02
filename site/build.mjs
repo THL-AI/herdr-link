@@ -13,6 +13,7 @@ const repo = "https://github.com/THL-AI/herdr-link"
 
 /** The docs, in sidebar order. */
 const pages = [
+  { file: "getting-started", label: "Getting started" },
   { file: "configuration", label: "Configuration" },
   { file: "agents", label: "Agents" },
   { file: "adapters", label: "Writing an adapter" },
@@ -41,6 +42,11 @@ const markdown = (headings) =>
         const html = this.parser.parseInline(tokens)
         const id = slug(html)
         if (depth === 2 || depth === 3) headings.push({ depth, id, html })
+        // "## 2. Create the bot": a numbered step, drawn with a badge.
+        const step = depth === 2 ? /^(\d+)\.\s+(.*)$/s.exec(html) : null
+        if (step !== null) {
+          return `<h2 id="${id}" class="step"><a class="anchor" href="#${id}"><span class="n">${step[1]}</span>${step[2]}</a></h2>\n`
+        }
         return `<h${depth} id="${id}"><a class="anchor" href="#${id}">${html}</a></h${depth}>\n`
       },
       link({ href, title, tokens }) {
@@ -82,6 +88,8 @@ main { padding: 32px 0 80px; min-width: 0; max-width: 780px; }
 h1 { font-size: 36px; letter-spacing: -.02em; line-height: 1.15; margin: 0 0 16px; }
 h2 { font-size: 24px; letter-spacing: -.01em; margin: 44px 0 12px; padding-top: 8px; }
 h3 { font-size: 18px; margin: 28px 0 8px; }
+h2.step a { display: flex; align-items: center; gap: 12px; }
+h2.step .n { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--bg); display: grid; place-items: center; font: 700 17px var(--sans); }
 h1 a.anchor, h2 a.anchor, h3 a.anchor { color: inherit; text-decoration: none; }
 p, li { color: var(--soft); }
 strong { color: var(--text); }
@@ -130,7 +138,7 @@ const render = (page) => {
 <body>
 <div class="top"><div class="in">
   <a class="brand" href="../"><img src="../logo.svg" alt="">herdr-link</a>
-  <nav><a href="configuration.html">Docs</a><a href="${repo}">GitHub</a></nav>
+  <nav><a href="getting-started.html">Docs</a><a href="${repo}">GitHub</a></nav>
 </div></div>
 <div class="layout">
   <aside><div class="group">Docs</div>${sidebar}</aside>
@@ -151,6 +159,6 @@ cpSync(join(root, "assets", "logo.svg"), join(out, "logo.svg"))
 for (const page of pages) writeFileSync(join(out, "docs", `${page.file}.html`), render(page))
 writeFileSync(
   join(out, "docs", "index.html"),
-  `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=configuration.html"><link rel="canonical" href="configuration.html">`
+  `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=getting-started.html"><link rel="canonical" href="getting-started.html">`
 )
 console.log(`built ${out}: index.html, ${pages.length} docs`)

@@ -65,8 +65,8 @@ invite link), picks up the agents on your PATH, writes the config, installs
 the agent hooks and starts herdr-link in the background (launchd on macOS, a
 systemd user unit on Linux).
 
-No herdr yet? `herdr-link doctor --fix` installs it with its official script
-(after asking), or see [herdr.dev](https://herdr.dev).
+No herdr yet? `init` offers to install it with its official installer. The
+whole path, bot included: [getting started](docs/getting-started.md).
 
 ```
 herdr-link doctor [--fix]        # check every piece; --fix repairs what it can
@@ -121,6 +121,7 @@ the bot asks who it is for.
 
 ## Documentation
 
+- [Getting started](docs/getting-started.md): from nothing to your phone, step by step
 - [Configuration](docs/configuration.md): every setting, file and path
 - [Agents](docs/agents.md): adding an agent, finding its keys, the hook
 - [Writing an adapter](docs/adapters.md): bring herdr-link to another chat app
