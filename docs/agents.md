@@ -1,0 +1,82 @@
+# Agents
+
+An agent is any program running in a herdr tab. herdr-link knows an agent from
+its `[agents.*]` entry in the config: how to start it, which emoji names it,
+and which keys answer its permission prompts. Claude Code and Grok come set
+up; adding another is configuration, not code.
+
+## What herdr-link uses
+
+| feature | comes from |
+| --- | --- |
+| "✅ Done", "⚠️ Needs you", 🔐 permission prompts | the agent's **status in herdr** (`working`, `done`, `blocked` with kind `permission` / `question` / `auth`). herdr reports it for the agents it supports. |
+| the agent's reply in the chat | the **shared hook** (below), after each turn |
+| typing your messages | `terminal.send`: works with any program |
+| Allow / Deny buttons | the agent's `allow` / `always` / `deny` / `trust` keys, pressed with `terminal.keys` |
+| starting it in a new tab | `argv`, or `template` (run as a program of that name) |
+| recognizing it in a tab | `template`, then the status's `app` (`claude-code` → `claude`), then the program's name |
+
+An agent herdr has no status for still works for messages and replies; it
+just never shows "Done", "Needs you" or buttons.
+
+## Adding one
+
+```toml
+[agents.codex]
+argv = ["codex"]       # how a new tab starts it (or: template = "codex")
+emoji = "🟦"           # a Unicode emoji: used in thread names and to pick it (🟦api)
+logo = "codex"         # optional: a custom emoji the chat adapter knows, for buttons
+allow = ["1"]          # keys for "yes" on its permission prompt
+always = ["2"]         # optional: "yes, and don't ask again"
+deny = ["esc"]         # "no"
+trust = ["y"]          # optional: "do you trust this folder?"
+```
+
+### Finding the keys
+
+Don't guess them: an agent's prompt changes between versions, and a wrong key
+can approve the wrong thing.
+
+1. Start the agent in a throwaway folder in a mode that asks before acting.
+2. Ask it for something that needs permission (`rm` a file, run a command).
+3. Look at the prompt: does a digit act at once, or does it need Enter? Is
+   `esc` "no"? Note any option that turns on "approve everything": never map a
+   button to it.
+4. Press your candidate keys with `hc keys <terminal> <keys…>` and watch the
+   result (`hc read <terminal>`, `hc get <terminal>` for the status).
+
+Verified so far (also in `config.example.toml`):
+
+- **Claude Code 2.1**: `1` Yes, `2` Yes and don't ask again, `esc` No (it then
+  asks what to do instead).
+- **Grok Build**: `3` Yes, `2` always allow this command, `4` No; `1` turns on
+  always-approve for everything, so it is never used. A new folder first asks
+  "do you trust this folder?" (`y`).
+
+## Replies: the shared hook
+
+After each turn, the agent's final answer goes to the chat through one hook
+script, `hooks/herdr-link-hook.mjs`. `herdr-link hooks install` registers it
+for Claude Code (`~/.claude/settings.json`) and Grok (`~/.grok/hooks/`).
+
+Any agent with **Claude-compatible hooks** can use it as is: register the
+command `node <path>/hooks/herdr-link-hook.mjs` for its `Stop`, `StopFailure`
+and `Notification` events. The hook reads the event from stdin
+(`hook_event_name` / `hookEventName`, and `last_assistant_message`,
+`lastAssistantMessage` or `transcript_path` for the reply).
+
+An agent with another hook system (or a wrapper script) can talk to the
+bridge directly. Connect to the unix socket
+`~/.local/state/herdr-link/hooks.sock` (or `$HERDR_LINK_SOCKET`) and write one
+JSON line:
+
+```json
+{"terminal": "t7", "event": "Stop", "text": "Fixed: the import was missing."}
+```
+
+- `terminal`: the herdr terminal, from the `HC_TERMINAL_ID` environment
+  variable every herdr terminal has.
+- `event`: `Stop` (a turn ended; `text` is the reply), `StopFailure` (a turn
+  failed; `error` says why) or `Notification`.
+- Keep it fast and never fail the agent: if the socket is missing, no bridge
+  is running; just exit.
