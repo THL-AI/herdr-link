@@ -16,11 +16,20 @@ export class DiscordError extends Error {
   }
 }
 
-const call = async <A>(token: string, path: string, init: RequestInit = {}): Promise<A> => {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const call = async <A>(token: string, path: string, init: RequestInit = {}, attempt = 0): Promise<A> => {
   const response = await fetch(`${api}${path}`, {
     ...init,
     headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json", ...init.headers }
   })
+  if (response.status === 429 && attempt < 3) {
+    // Rate limited (the running bridge uses the same token): wait as asked, then retry.
+    const body = (await response.json().catch(() => ({}))) as { retry_after?: number }
+    const seconds = body.retry_after ?? Number(response.headers.get("retry-after") ?? 1)
+    await sleep(Math.min(Math.max(seconds, 0.2), 5) * 1000)
+    return call(token, path, init, attempt + 1)
+  }
   if (!response.ok) {
     const body = await response.text()
     throw new DiscordError(response.status, `${response.status} ${response.statusText}: ${body.slice(0, 200)}`)

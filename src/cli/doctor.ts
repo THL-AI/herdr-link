@@ -181,13 +181,17 @@ const checkDiscord = async (section: BridgeConfig.AdapterSection): Promise<Array
       `Install Link: None, then Public Bot off: https://discord.com/developers/applications/${app.id}/installation`
     ))
   }
-  const guilds = await Discord.guilds(token)
-  const guild = guilds.find((g) => g.id === section.guild)
-  findings.push(
-    guild !== undefined
-      ? okay(`on server ${guild.name}`)
-      : fail(`the bot is not on server ${String(section.guild)}`, `Invite it: ${Discord.inviteUrl(app.id)}`)
-  )
+  try {
+    const guilds = await Discord.guilds(token)
+    const guild = guilds.find((g) => g.id === section.guild)
+    findings.push(
+      guild !== undefined
+        ? okay(`on server ${guild.name}`)
+        : fail(`the bot is not on server ${String(section.guild)}`, `Invite it: ${Discord.inviteUrl(app.id)}`)
+    )
+  } catch (error) {
+    findings.push(warn(`cannot list the bot's servers: ${(error as Error).message}`, "Run herdr-link doctor again in a moment."))
+  }
   const owner = Discord.owner(app)
   if (owner !== undefined && owner.id !== section.owner) {
     findings.push(warn(`owner in the config is not the app's owner (${owner.username})`, "Fine if intended."))
