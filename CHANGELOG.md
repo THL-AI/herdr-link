@@ -6,12 +6,22 @@ What changed in each release of herdr-link. The format follows
 change the config or the chat protocol). Where it's heading:
 [roadmap](docs/roadmap.md).
 
-## Unreleased
+## 0.6.2 (2026-11-03)
 
 ### Fixed
 
 - The Herdr bar's panel opens under the bar, not wherever the pointer last
   was in the main window.
+- A space nobody named gets its room named as herdr shows it, after where its
+  terminal is now (its repo or folder), and the room follows a `cd`. It was
+  named after the folder the space was made in (`~`).
+- A tab nobody named is called by its place (1, 2…), as in herdr. Its empty
+  name crashed the bridge, which then made a new room on every restart.
+- A message the chat protocol refuses fails on its own instead of stopping
+  the bridge.
+- Discord: a rename or topic change held by Discord's rate limit is
+  postponed to the next sync, as intended. It failed the whole sync, because
+  discord.js names that error after its route.
 
 ## 0.6.1 (2026-11-03)
 

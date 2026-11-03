@@ -110,7 +110,10 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
 
 - **herdr is the source of truth.** A herdr space → a private room (Discord:
   a category only the owner and the bot see), each tab → a thread named
-  `<agent emoji><tab>`. Rooms and threads made by hand are never touched. An
+  `<agent emoji><tab>`. Names as herdr-app shows them: an unnamed space is
+  called after where its first terminal is now (the terminal's `where`
+  label, "ram / main"; a `labels` event that changes it resyncs), an unnamed
+  tab by its place (1, 2…). Rooms and threads made by hand are never touched. An
   adapter without `rooms` gets top-level threads named `<space> / <tab>`, and
   a closed tab's thread is deleted (no archive).
 - **Owner → agent:** a message in a tab's thread → `terminal.send` to the tab's

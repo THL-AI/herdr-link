@@ -93,8 +93,13 @@ export const make = Effect.fnUntraced(function*<Out extends Methods, In extends 
       const id = nextId++
       const deferred = Deferred.makeUnsafe<unknown, RpcError | PeerClosed>()
       pending.set(id, deferred)
-      return encodeParams(def, params).pipe(
-        Effect.flatMap((encoded) => send({ jsonrpc: "2.0", id, method, params: encoded })),
+      // A value that doesn't fit the schema fails this request only: one odd
+      // name must not take the whole bridge down.
+      return Schema.encodeUnknownEffect(def.params)(params).pipe(
+        Effect.mapError((issue) =>
+          new RpcError({ code: JsonRpc.ErrorCode.InvalidParams, message: `invalid params of ${method}: ${issue}` })
+        ),
+        Effect.flatMap((encoded) => send({ jsonrpc: "2.0", id, method, params: encoded as Schema.Json })),
         Effect.andThen(Deferred.await(deferred)),
         Effect.flatMap((raw) =>
           Schema.decodeUnknownEffect(def.result)(raw).pipe(

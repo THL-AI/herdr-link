@@ -64,9 +64,9 @@ const rpcError = (code: number, message: string) => new Peer.RpcError({ code, me
 /** Rate limits longer than this fail at once instead of holding the call (see the client's `rest` options). */
 const longestWait = 5000
 
-/** discord.js's RateLimitError, thrown for waits over `longestWait`. */
+/** discord.js's RateLimitError, thrown for waits over `longestWait`; its name carries the route ("RateLimitError[/channels/:id]"). */
 const isRateLimited = (error: unknown): error is { readonly timeToReset: number; readonly retryAfter: number } =>
-  error instanceof Error && error.name === "RateLimitError"
+  error instanceof Error && error.name.startsWith("RateLimitError")
 
 const toRpcError = (what: string, error: unknown): Peer.RpcError => {
   if (error instanceof Peer.RpcError) return error

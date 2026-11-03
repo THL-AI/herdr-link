@@ -123,6 +123,13 @@ describe("Peer", () => {
       assert.strictEqual((died as Peer.RpcError).code, ErrorCode.InternalError)
     }))
 
+  it.effect("fails a request whose own params don't fit, without dying", () =>
+    Effect.gen(function*() {
+      const { core } = yield* setup
+      const refused = yield* core.request("thread.ensure", { name: "" as never }).pipe(Effect.flip)
+      assert.strictEqual((refused as Peer.RpcError).code, ErrorCode.InvalidParams)
+    }))
+
   it.effect("rejects invalid params and unknown methods", () =>
     Effect.gen(function*() {
       const [bridgeSide, adapterSide] = yield* Transport.pair

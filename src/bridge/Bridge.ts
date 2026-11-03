@@ -158,7 +158,27 @@ export const run = Effect.fnUntraced(function*(options: {
   /** "api", "api · laptop" (this bridge's machine), or "api · build-box" (a space on another herdr machine). */
   const roomName = (space: Spaces.Space) => {
     const machine = space.machine ?? options.machine
-    return machine === undefined ? space.name : `${space.name} · ${machine}`
+    const name = shownName(space)
+    return machine === undefined ? name : `${name} · ${machine}`
+  }
+  /**
+   * The space's name as herdr-app shows it. An unnamed one is called after
+   * where its first terminal is now (its repo, else its folder) and follows
+   * it; herdr-app writes that into each terminal's `where` label
+   * ("ram / main").
+   */
+  const shownName = (space: Spaces.Space) => {
+    if (space.named || space.machine !== undefined) return space.name
+    for (const tab of space.tabs) {
+      for (const address of tab.terminals) {
+        const where = terminals.get(address)?.labels["where"]
+        if (where === undefined) continue
+        const suffix = ` / ${tab.name}`
+        const name = where.endsWith(suffix) ? where.slice(0, -suffix.length) : where.split(" / ")[0]
+        if (name !== undefined && name.trim() !== "") return name.trim()
+      }
+    }
+    return space.name
   }
   const archiveName = options.machine === undefined ? archiveBase : `${archiveBase} · ${options.machine}`
   /** When each terminal's last hook reply arrived (ms). */
@@ -1010,7 +1030,7 @@ export const run = Effect.fnUntraced(function*(options: {
       }).pipe(Effect.mapError((error) => new RpcError({ code: ErrorCode.InternalError, message: error.message })))
 
       const withRooms = adapters.get(adapter)?.rooms === true
-      const space: Spaces.Space = { id: created.space, name: params.name, folder, tabs: [] }
+      const space: Spaces.Space = { id: created.space, name: params.name, named: true, folder, tabs: [] }
       const room = withRooms ? (yield* chat.call(adapter, "room.ensure", { name: roomName(space) })).room : undefined
       const thread = created.tab === undefined || tabName === undefined
         ? undefined // a tab Herdr names itself: the sync makes its thread
@@ -1458,14 +1478,22 @@ export const run = Effect.fnUntraced(function*(options: {
             Effect.forkScoped
           )
         })
-      case "title":
       case "labels":
+        return Effect.suspend(() => {
+          const terminal = terminals.get(event.address)
+          if (terminal === undefined) return Effect.void
+          const space = spaces.find((sp) => sp.tabs.some((tab) => tab.terminals.includes(event.address)))
+          const before = space === undefined ? undefined : roomName(space)
+          terminals.set(event.address, { ...terminal, labels: event.labels })
+          // An unnamed space follows its terminal's folder: rename its room.
+          return space !== undefined && roomName(space) !== before ? syncAll : Effect.void
+        })
+      case "title":
       case "foreground":
         return Effect.sync(() => {
           const terminal = terminals.get(event.address)
           if (terminal === undefined) return
           if (event._tag === "title") terminals.set(event.address, { ...terminal, title: event.title })
-          if (event._tag === "labels") terminals.set(event.address, { ...terminal, labels: event.labels })
           if (event._tag === "foreground") {
             terminals.set(event.address, { ...terminal, foreground: event.foreground })
           }

@@ -26,6 +26,7 @@ const RawDoc = Schema.Struct({ spaces: Schema.Array(RawSpace) })
 
 export interface Tab {
   readonly id: string
+  /** Its own name, else its place (1, 2, ...) as herdr-app shows it. */
   readonly name: string
   /** Terminal addresses in its panes, in layout order. */
   readonly terminals: ReadonlyArray<string>
@@ -33,8 +34,14 @@ export interface Tab {
 
 export interface Space {
   readonly id: string
-  /** The name herdr-app shows: its own, else `~` for home, else the folder's basename. */
+  /**
+   * Its own name, else a guess from the folder it was made in (`~` for home,
+   * else the basename). herdr-app calls an unnamed space after where its first
+   * terminal is now, which only the terminal's `where` label knows.
+   */
   readonly name: string
+  /** false: nobody named it, so herdr-app's name follows its first terminal. */
+  readonly named: boolean
   readonly folder: string
   /** Set when the space lives on another herdr machine. */
   readonly machine?: string
@@ -68,9 +75,14 @@ export const decode = (value: unknown) =>
         doc.spaces.map((space) => ({
           id: space.id,
           name: displayName(space),
+          named: space.name !== "",
           folder: space.folder,
           ...(space.machine ? { machine: space.machine } : {}),
-          tabs: space.tabs.map((tab) => ({ id: tab.id, name: tab.name, terminals: terminalsOf(tab.root) }))
+          tabs: space.tabs.map((tab, index) => ({
+            id: tab.id,
+            name: tab.name === "" ? String(index + 1) : tab.name,
+            terminals: terminalsOf(tab.root)
+          }))
         }))
       )
     )

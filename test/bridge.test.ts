@@ -174,6 +174,31 @@ describe("Bridge", () => {
       yield* take
     }))
 
+  it.effect("names an unnamed space as herdr-app does, following its terminal; an unnamed tab by its place", () =>
+    Effect.gen(function*() {
+      const { docs, coreEvents, chatEvents, take } = yield* setup
+      docs.set("herdr-app", {
+        value: {
+          spaces: [{
+            id: "sp9",
+            name: "",
+            folder: process.env.HOME,
+            tabs: [{ id: "tb9", name: "", root: { type: "block", id: "p9", content: { terminal: "t9" } } }]
+          }]
+        },
+        version: 1
+      })
+      yield* Queue.offer(coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t9")] })
+      yield* Queue.offer(chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      assert.deepStrictEqual((yield* take).params, { name: "~" })
+      assert.strictEqual((yield* take).params.name, "1")
+
+      // `cd ~/Projects/ram` in its terminal: herdr-app relabels it and the room follows.
+      yield* Queue.offer(coreEvents, { _tag: "labels", seq: 2, address: "t9", labels: { where: "ram / 1" } })
+      assert.deepStrictEqual((yield* take).params, { room: "room-~", name: "ram" })
+      assert.strictEqual((yield* take).params.topic, "ram / 1 — " + process.env.HOME)
+    }))
+
   it.effect("posts when an agent turns done or blocked, once per change", () =>
     Effect.gen(function*() {
       const { coreEvents, chatEvents, take, calls } = yield* setup
