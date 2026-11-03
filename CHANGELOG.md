@@ -6,6 +6,16 @@ What changed in each release of herdr-link. The format follows
 change the config or the chat protocol). Where it's heading:
 [roadmap](docs/roadmap.md).
 
+## 0.6.3 (2026-11-03)
+
+### Fixed
+
+- A question whose options have previews (shown beside a preview box) is
+  answered from the chat: a press picks the option with its digit and Enter,
+  where the digit alone only moved the cursor. Such a question has no "Type
+  something", so writing in the thread closes the form and sends the text as
+  a message.
+
 ## 0.6.2 (2026-11-03)
 
 ### Fixed

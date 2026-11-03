@@ -13,6 +13,8 @@ export const Question = Schema.Struct({
   question: Schema.String,
   header: Schema.optionalKey(Schema.String),
   multiSelect: Schema.Boolean,
+  /** Its options carry previews: a digit only moves the cursor, Enter picks, and there is no "Type something". */
+  preview: Schema.optionalKey(Schema.Boolean),
   options: Schema.NonEmptyArray(Schema.Struct({
     label: Schema.String,
     description: Schema.optionalKey(Schema.String)

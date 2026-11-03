@@ -4,12 +4,14 @@
  * form takes (verified on Claude Code 2.1.317):
  *
  * - single select: the option's digit picks it and moves on (the only question
- *   of a form: submits it);
+ *   of a form: submits it); with previews (options shown beside a preview
+ *   box) the digit only moves the cursor and Enter picks;
  * - multi select: digits toggle, `tab` moves on;
  * - your own words: on a single-select question, the digit of "Type something"
  *   (after the options) and the text with Enter; a multi-select question can't
  *   take typed text reliably, so the form is closed (`esc`) and the text goes
- *   to the agent as a normal message;
+ *   to the agent as a normal message; a question with previews has no "Type
+ *   something", so the same;
  * - a form with several questions or a multi-select one ends on a review
  *   screen: `1` submits.
  */
@@ -26,6 +28,13 @@ export const optionKey = (index: number) => String(index + 1)
 
 /** "Type something": right after the options. */
 export const ownWordsKey = (question: Question) => String(question.options.length + 1)
+
+/** The keys that pick an option of a single-select question, one screen step each. */
+export const pickSteps = (question: Question, index: number): ReadonlyArray<ReadonlyArray<string>> =>
+  question.preview === true ? [[optionKey(index)], ["enter"]] : [[optionKey(index)]]
+
+/** Whether the question has a "Type something" line to type an answer into. */
+export const takesWords = (question: Question) => !question.multiSelect && question.preview !== true
 
 /** Whether the form ends on a review screen that needs `1` to submit. */
 export const needsReview = (questions: ReadonlyArray<Question>) =>
@@ -52,7 +61,9 @@ export const text = (questions: ReadonlyArray<Question>, step: number) => {
   )
   const how = q.multiSelect
     ? "Tap all that fit, then Next. Or write your answer here (that closes the form)."
-    : "Tap one, or write your own answer here."
+    : takesWords(q)
+    ? "Tap one, or write your own answer here."
+    : "Tap one. Or write here instead (that closes the form)."
   return [`❓ Question${count}${header}`, q.question, "", ...options, "", `-# ${how}`].join("\n")
 }
 

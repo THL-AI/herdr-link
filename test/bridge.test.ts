@@ -539,6 +539,43 @@ describe("question forms", () => {
       })
     }))
 
+  it.effect("picks an option with a preview by its digit, then Enter; words close such a form", () =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* connect(env)
+      const layout = { ...color, preview: true }
+      yield* ask(env, [layout])
+      yield* Queue.offer(env.coreEvents, onScreen(2))
+      assert.include((yield* env.take).params.text, "-# Tap one. Or write here instead (that closes the form).")
+      yield* Queue.offer(env.chatEvents, pressed("q:1:0:1"))
+      assert.include((yield* env.take).params.text, "→ Green")
+      assert.deepStrictEqual(yield* keys(env), ["2"]) // moves the cursor only
+      yield* TestClock.adjust("1 second")
+      assert.deepStrictEqual(yield* keys(env), ["enter"])
+
+    }))
+
+  it.effect("closes a form with previews when the owner writes: no Type something there", () =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* connect(env)
+      yield* ask(env, [{ ...color, preview: true }])
+      yield* Queue.offer(env.coreEvents, onScreen(2))
+      yield* env.take
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "message.received",
+        adapter: "discord",
+        params: { place: thread, message: MessageId.make("m9"), text: "neither, a grid", attachments: [] }
+      })
+      assert.include((yield* env.take).params.text, "→ closed; your message went to the agent")
+      assert.deepStrictEqual(yield* keys(env), ["esc"])
+      yield* TestClock.adjust("1 second")
+      assert.deepStrictEqual(yield* Queue.take(env.coreCalls), {
+        method: "terminal.send",
+        params: { terminal: "t1", text: "neither, a grid", force: true }
+      })
+    }))
+
   it.effect("waits a moment for the hook's copy; without one it posts the plain status", () =>
     Effect.gen(function*() {
       const env = yield* setup

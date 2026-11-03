@@ -599,7 +599,12 @@ export const run = Effect.fnUntraced(function*(options: {
     )
 
   /** The current question is answered (its keys already typed): show it, go on, submit at the end. */
-  const advance = (form: Form, answer: string, keys: ReadonlyArray<string>, then?: Effect.Effect<void, CoreError>) =>
+  const advance = (
+    form: Form,
+    answer: string,
+    steps: ReadonlyArray<ReadonlyArray<string>>,
+    then?: Effect.Effect<void, CoreError>
+  ) =>
     Effect.gen(function*() {
       yield* editForm(form.posted, `${withoutHint(form.text)}\n→ ${answer}`)
       form.step++
@@ -607,7 +612,7 @@ export const run = Effect.fnUntraced(function*(options: {
       const done = form.step >= form.questions.length
       const submit = done && Questions.needsReview(form.questions) ? [["1"]] : []
       if (done) forms.delete(form.address)
-      yield* formKeys(form.address, [keys, ...submit], then)
+      yield* formKeys(form.address, [...steps, ...submit], then)
       if (!done) yield* postStep(form)
     })
 
@@ -625,23 +630,23 @@ export const run = Effect.fnUntraced(function*(options: {
       const question = form.questions[form.step]!
       if (parsed.choice === "next") {
         const labels = [...form.picked].sort((a, b) => a - b).map((i) => question.options[i]!.label)
-        return yield* advance(form, labels.length === 0 ? "(none)" : labels.join(", "), ["tab"])
+        return yield* advance(form, labels.length === 0 ? "(none)" : labels.join(", "), [["tab"]])
       }
       const option = question.options[parsed.choice]
       if (option === undefined) return
-      if (!question.multiSelect) return yield* advance(form, option.label, [Questions.optionKey(parsed.choice)])
+      if (!question.multiSelect) return yield* advance(form, option.label, Questions.pickSteps(question, parsed.choice))
       if (form.picked.has(parsed.choice)) form.picked.delete(parsed.choice)
       else form.picked.add(parsed.choice)
       yield* formKeys(form.address, [[Questions.optionKey(parsed.choice)]])
       yield* editForm(form.posted, form.text, Questions.actions(form.id, form.questions, form.step, form.picked))
     })
 
-  /** The owner wrote while the form is open: their own answer, or (multi select) a message instead. */
+  /** The owner wrote while the form is open: their own answer, or (multi select, previews) a message instead. */
   const answerInWords = (form: Form, text: string) =>
     Effect.gen(function*() {
       const question = form.questions[form.step]!
       const send = core.call("terminal.send", { terminal: form.address, text, force: true }).pipe(Effect.asVoid)
-      if (!question.multiSelect) return yield* advance(form, text, [Questions.ownWordsKey(question)], send)
+      if (Questions.takesWords(question)) return yield* advance(form, text, [[Questions.ownWordsKey(question)]], send)
       yield* closeForm(form, "closed; your message went to the agent")
       yield* formKeys(form.address, [["esc"]], send)
     })

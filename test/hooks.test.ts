@@ -65,7 +65,12 @@ describe("agent hook", () => {
       yield* runHook(socket, {
         hook_event_name: "PreToolUse",
         tool_name: "AskUserQuestion",
-        tool_input: { questions: [{ question: "Pick one", header: "One", options: [{ label: "A", description: "first" }, { label: "" }, "junk"] }] }
+        tool_input: {
+          questions: [
+            { question: "Pick one", header: "One", options: [{ label: "A", description: "first" }, { label: "" }, "junk"] },
+            { question: "Layout?", options: [{ label: "Two columns", preview: "┌─┬─┐" }, { label: "Grid" }] }
+          ]
+        }
       })
 
       const got = yield* messages.pipe(Stream.take(4), Stream.runCollect)
@@ -76,7 +81,10 @@ describe("agent hook", () => {
         {
           terminal: "t5",
           event: "PreToolUse",
-          questions: [{ question: "Pick one", header: "One", multiSelect: false, options: [{ label: "A", description: "first" }] }]
+          questions: [
+            { question: "Pick one", header: "One", multiSelect: false, options: [{ label: "A", description: "first" }] },
+            { question: "Layout?", multiSelect: false, preview: true, options: [{ label: "Two columns" }, { label: "Grid" }] }
+          ]
         }
       ])
     }).pipe(Effect.scoped))

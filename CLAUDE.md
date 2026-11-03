@@ -236,7 +236,10 @@ rest goes to the adapter in `hello`. Agent keys verified live:
   select, cursor stays), `n+1` "Type something" (single: cursor there, typed
   text + Enter answers), then "Chat about this" (declines the form); `tab`
   next; review screen `1` Submit answers, `2` Cancel; `esc` cancels.
-  `terminal.send` refuses a blocked terminal unless `force`.
+  `terminal.send` refuses a blocked terminal unless `force`. Options with
+  previews (a preview box beside the list): a digit only moves the cursor,
+  `enter` picks, no "Type something" (the hook marks such a question
+  `preview`).
 - Grok Build: `1` always-approve everything (never send), `2` always allow this
   command, `3` Yes, `4` No (goes `idle`), `5` never allow; digits act at once.
   Safe commands run without asking. A new folder asks "trust this folder?"

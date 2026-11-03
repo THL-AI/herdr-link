@@ -114,6 +114,9 @@ const askedQuestions = (input) => {
         question: q.question.slice(0, 1000),
         ...(typeof q.header === "string" ? { header: q.header.slice(0, 100) } : {}),
         multiSelect: q.multiSelect === true,
+        ...(Array.isArray(q.options) && q.options.some((o) => typeof o?.preview === "string" && o.preview !== "")
+          ? { preview: true }
+          : {}),
         options
       }]
       : []
