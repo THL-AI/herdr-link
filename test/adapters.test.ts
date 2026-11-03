@@ -21,13 +21,28 @@ describe("adapter processes", () => {
     Effect.gen(function*() {
       process.env.FAKE_TOKEN = "t"
       process.env.OTHER_SECRET = "s"
-      const chat = yield* Adapters.make({ adapters: { fake: section() }, commands: [] })
+      const chat = yield* Adapters.make({
+        adapters: { fake: section() },
+        commands: [],
+        agents: Adapters.agentInfos({
+          claude: { template: "claude", emoji: "✳️", logo: "claude" },
+          shell: { argv: ["zsh", "-l"], emoji: "🐚" }
+        })
+      })
       const events = yield* Stream.toPull(chat.events)
       const take = events.pipe(Effect.map((chunk) => chunk[0]!))
 
       const connected = yield* take
       assert.strictEqual(connected._tag, "adapter.connected")
       assert.deepStrictEqual((yield* chat.connected).map((a) => a.info.name), ["fake"])
+
+      // hello carried the agents it may start.
+      yield* chat.call("fake", "message.post", { place: direct, text: "agents" })
+      const agents = yield* take
+      assert.deepStrictEqual(agents._tag === "message.received" && JSON.parse(agents.params.text), [
+        { name: "claude", emoji: "✳️", logo: "claude" },
+        { name: "shell", emoji: "🐚" }
+      ])
 
       const posted = yield* chat.call("fake", "message.post", { place: direct, text: "env" })
       assert.strictEqual(posted.message, "1")
@@ -63,6 +78,7 @@ describe("adapter processes", () => {
         name: "fake",
         section: section({ reject: true }),
         commands: [],
+        agents: [],
         handlers: noHandlers
       }).pipe(Effect.flip)
       assert.isTrue(error.fatal)
@@ -75,6 +91,7 @@ describe("adapter processes", () => {
         name: "missing",
         section: { command: ["/nonexistent/adapter"] } as AdapterSection,
         commands: [],
+        agents: [],
         handlers: noHandlers
       }).pipe(Effect.flip)
       assert.isFalse(error.fatal)

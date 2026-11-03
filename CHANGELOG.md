@@ -6,6 +6,20 @@ What changed in each release of herdr-link. The format follows
 change the config or the chat protocol). Where it's heading:
 [roadmap](docs/roadmap.md).
 
+## 0.6.4 (2026-11-04)
+
+### Added
+
+- `hello` lists the agents the bridge can start (`agents`: name, emoji,
+  logo), so a program can offer them without reading the `space new`
+  command's choices.
+
+### Changed
+
+- A tab started by an adapter that named its agent (`thread.created` with
+  `agent`) gets no "✳️ claude is starting in …" post: the program asked for
+  it and needs no echo.
+
 ## 0.6.3 (2026-11-03)
 
 ### Fixed

@@ -194,7 +194,8 @@ notifications; stderr is the adapter's log. Exported for adapter authors as
 `schema/chat.openrpc.json`.
 
 - Bridge → adapter: `hello` (first: protocol version, the adapter's config
-  section, the commands to register; the adapter validates its config,
+  section, the commands to register, `agents` {name, emoji, logo?}, optional
+  in the schema since older bridges lack it; the adapter validates its config,
   connects and answers with name, version, capabilities), `room.ensure`,
   `room.delete`, `thread.ensure` (create, or reuse by id: move, rename),
   `thread.delete`, `message.post` (text, files, actions), `message.edit`,

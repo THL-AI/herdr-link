@@ -148,6 +148,17 @@ export const CommandArgs = Schema.Record(
 ).annotate({ identifier: "CommandArgs" })
 export type CommandArgs = typeof CommandArgs.Type
 
+export const AgentInfo = Schema.Struct({
+  name: Schema.NonEmptyString.annotate({
+    description: "The name `space.create` and `thread.created` take as `agent` (claude, grok, shell…)."
+  }),
+  emoji: Schema.NonEmptyString.annotate({ description: "It starts thread names: `✳️fix-login`." }),
+  logo: Schema.optionalKey(Schema.NonEmptyString.annotate({
+    description: "A custom emoji's name, for adapters that have custom emoji (Discord: an app emoji)."
+  }))
+}).annotate({ identifier: "AgentInfo" })
+export type AgentInfo = typeof AgentInfo.Type
+
 export const AdapterInfo = Schema.Struct({
   name: Schema.NonEmptyString,
   version: Schema.NonEmptyString

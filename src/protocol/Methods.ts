@@ -14,6 +14,7 @@ import {
   Action,
   ActionId,
   AdapterInfo,
+  AgentInfo,
   Attachment,
   Capabilities,
   Choice,
@@ -45,13 +46,17 @@ export const BridgeToAdapter = {
   hello: request(
     "hello",
     "First message, sent once. The adapter validates `config` (failing with InvalidConfig), registers `commands` " +
-      "if it supports them, connects to its platform and only then answers.",
+      "if it supports them, connects to its platform and only then answers. `agents` are the agents the bridge " +
+      "can start (they change only with the config, which restarts the adapter).",
     Schema.Struct({
       protocol: ProtocolVersion,
       config: Schema.Record(Schema.String, Schema.Json).annotate({
         description: "The adapter's section of the bridge config, minus `command`."
       }),
-      commands: Schema.Array(CommandSpec)
+      commands: Schema.Array(CommandSpec),
+      agents: Schema.optionalKey(Schema.Array(AgentInfo).annotate({
+        description: "Sent since herdr-link 0.6.4; absent from older bridges."
+      }))
     }),
     Schema.Struct({
       protocol: ProtocolVersion,

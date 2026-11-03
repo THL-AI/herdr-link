@@ -837,7 +837,8 @@ export const run = Effect.fnUntraced(function*(options: {
   const pendingTabs = new Map<number, PendingTab>()
   let nextPending = 1
 
-  const startTab = (adapter: string, spaceId: string, thread: string, agentName: string, tabName: string) =>
+  /** `quiet`: the adapter named the agent itself (a program), so no "is starting" post. */
+  const startTab = (adapter: string, spaceId: string, thread: string, agentName: string, tabName: string, quiet = false) =>
     Effect.gen(function*() {
       const place: Place = { kind: "thread", thread: ThreadId.make(thread) }
       const space = spaces.find((sp) => sp.id === spaceId)
@@ -869,6 +870,7 @@ export const run = Effect.fnUntraced(function*(options: {
           [adapter]: { ...mine, threads: { ...mine.threads, [created.tab]: { thread, emoji: agent.emoji } } }
         }
       })
+      if (quiet) return
       yield* chat.call(adapter, "message.post", { place, text: `${agent.emoji} ${agentName} is starting in ${roomName(space)} / ${tabName}.` }).pipe(
         Effect.ignore
       )
@@ -891,7 +893,7 @@ export const run = Effect.fnUntraced(function*(options: {
   const openTabFor = (adapter: string, spaceId: string, thread: string, name: string, agent?: string) =>
     Effect.gen(function*() {
       if (agent !== undefined) {
-        if (agents[agent] !== undefined) return yield* startTab(adapter, spaceId, thread, agent, name)
+        if (agents[agent] !== undefined) return yield* startTab(adapter, spaceId, thread, agent, name, true)
         return yield* chat.call(adapter, "message.post", {
           place: { kind: "thread", thread: ThreadId.make(thread) },
           text: `⚠️ No agent named ${agent} here; the agents are ${Object.keys(agents).join(", ")}.`

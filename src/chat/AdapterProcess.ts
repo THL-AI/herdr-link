@@ -8,7 +8,7 @@ import { type Cause, Duration, Effect, Queue, Schema, type Scope, Stream } from 
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { fileURLToPath } from "node:url"
 import { type AdapterSection, adapterConfig } from "../Config.ts"
-import type { AdapterInfo, Capabilities, CommandSpec } from "../protocol/Chat.ts"
+import type { AdapterInfo, AgentInfo, Capabilities, CommandSpec } from "../protocol/Chat.ts"
 import { ErrorCode } from "../protocol/JsonRpc.ts"
 import { AdapterToBridge, BridgeToAdapter } from "../protocol/Methods.ts"
 import * as Peer from "../protocol/Peer.ts"
@@ -58,6 +58,7 @@ export const connect = Effect.fn("AdapterProcess.connect")(function*<R>(options:
   readonly name: string
   readonly section: AdapterSection
   readonly commands: ReadonlyArray<CommandSpec>
+  readonly agents: ReadonlyArray<AgentInfo>
   readonly handlers: (peer: Peer.Peer<typeof BridgeToAdapter>) => Peer.Handlers<typeof AdapterToBridge, R>
 }): Effect.fn.Return<Connection, AdapterFailed, Scope.Scope | ChildProcessSpawner.ChildProcessSpawner | R> {
   const { name, section } = options
@@ -112,7 +113,8 @@ export const connect = Effect.fn("AdapterProcess.connect")(function*<R>(options:
   const hello = yield* peer.request("hello", {
     protocol: 1,
     config: adapterConfig(section),
-    commands: options.commands
+    commands: options.commands,
+    agents: options.agents
   }).pipe(
     Effect.timeoutOrElse({
       duration: helloTimeout,

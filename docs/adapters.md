@@ -59,7 +59,7 @@ The machine-readable reference is [`schema/chat.openrpc.json`](../schema/chat.op
 ## hello
 
 ```json
-→ {"jsonrpc":"2.0","id":1,"method":"hello","params":{"protocol":1,"config":{"owner":"123456789","chat":"-1001234567890"},"commands":[{"name":"status","description":"What every agent is doing","options":[]},{"name":"space new","description":"Make a herdr space","options":[{"name":"name","description":"Space name","type":"string","required":true}]}]}}
+→ {"jsonrpc":"2.0","id":1,"method":"hello","params":{"protocol":1,"config":{"owner":"123456789","chat":"-1001234567890"},"commands":[{"name":"status","description":"What every agent is doing","options":[]},{"name":"space new","description":"Make a herdr space","options":[{"name":"name","description":"Space name","type":"string","required":true}]}],"agents":[{"name":"claude","emoji":"✳️","logo":"claude"},{"name":"shell","emoji":"🐚"}]}}
 ← {"jsonrpc":"2.0","id":1,"result":{"protocol":1,"adapter":{"name":"telegram","version":"0.1.0"},"capabilities":{"rooms":true,"direct":true,"threadCreation":true,"actions":true,"reactions":true,"customEmoji":false,"commands":true,"edit":true,"files":true,"maxText":4096,"maxActions":8}}}
 ```
 
@@ -68,6 +68,11 @@ The machine-readable reference is [`schema/chat.openrpc.json`](../schema/chat.op
   owner can act on; the bridge then stops instead of restarting you.
 - `commands` are the slash commands to register, if your platform has them.
   A name with a space (`space new`) is a command with a subcommand.
+- `agents` are the agents the bridge can start: the `name` that
+  `space.create` and `thread.created` take as `agent`, the `emoji` that
+  starts its threads' names, and `logo`, a custom emoji's name for platforms
+  that have them. They change only with the config, which restarts you.
+  Bridges before 0.6.4 don't send it.
 - `capabilities` tell the bridge what you can do. Be honest: the bridge works
   around what you can't.
 

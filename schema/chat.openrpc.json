@@ -8,7 +8,7 @@
   "methods": [
     {
       "name": "hello",
-      "description": "First message, sent once. The adapter validates `config` (failing with InvalidConfig), registers `commands` if it supports them, connects to its platform and only then answers.",
+      "description": "First message, sent once. The adapter validates `config` (failing with InvalidConfig), registers `commands` if it supports them, connects to its platform and only then answers. `agents` are the agents the bridge can start (they change only with the config, which restarts the adapter).",
       "tags": [
         {
           "$ref": "#/components/tags/bridge-to-adapter"
@@ -39,6 +39,17 @@
             "items": {
               "$ref": "#/components/schemas/CommandSpec"
             }
+          }
+        },
+        {
+          "name": "agents",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentInfo"
+            },
+            "description": "Sent since herdr-link 0.6.4; absent from older bridges."
           }
         }
       ],
@@ -910,6 +921,31 @@
           "name",
           "description",
           "options"
+        ],
+        "additionalProperties": true
+      },
+      "AgentInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The name `space.create` and `thread.created` take as `agent` (claude, grok, shell…)."
+          },
+          "emoji": {
+            "type": "string",
+            "minLength": 1,
+            "description": "It starts thread names: `✳️fix-login`."
+          },
+          "logo": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A custom emoji's name, for adapters that have custom emoji (Discord: an app emoji)."
+          }
+        },
+        "required": [
+          "name",
+          "emoji"
         ],
         "additionalProperties": true
       },

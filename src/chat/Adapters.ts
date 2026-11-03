@@ -5,8 +5,8 @@
 import { Deferred, Duration, Effect, Layer, Queue, Schedule, Stream } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import * as Commands from "../bridge/Commands.ts"
-import { type AdapterSection, BridgeConfig, enabledAdapters } from "../Config.ts"
-import type { CommandSpec } from "../protocol/Chat.ts"
+import { type AdapterSection, type Agent, BridgeConfig, enabledAdapters } from "../Config.ts"
+import type { AgentInfo, CommandSpec } from "../protocol/Chat.ts"
 import { ErrorCode } from "../protocol/JsonRpc.ts"
 import type { AdapterToBridge, BridgeToAdapter, Params, Result } from "../protocol/Methods.ts"
 import { type Handlers, RpcError } from "../protocol/Peer.ts"
@@ -28,6 +28,8 @@ const restartSchedule = Schedule.min([Schedule.exponential("1 second"), Schedule
 export const make = Effect.fnUntraced(function*(options: {
   readonly adapters: Readonly<Record<string, AdapterSection>>
   readonly commands: ReadonlyArray<CommandSpec>
+  /** The agents the bridge can start, for `hello`. */
+  readonly agents?: ReadonlyArray<AgentInfo>
   /** How long one call may take before it fails, so a stuck adapter can't hold the bridge. */
   readonly callTimeout?: Duration.Input
 }) {
@@ -75,7 +77,7 @@ export const make = Effect.fnUntraced(function*(options: {
 
   const runOnce = (name: string, section: AdapterSection) =>
     Effect.gen(function*() {
-      const connection = yield* connect({ name, section, commands: options.commands, handlers: () => handlers(name) })
+      const connection = yield* connect({ name, section, commands: options.commands, agents: options.agents ?? [], handlers: () => handlers(name) })
       connections.set(name, connection)
       errors.delete(name)
       yield* Effect.logInfo(`connected: ${connection.info.name} ${connection.info.version}`)
@@ -148,10 +150,22 @@ export const make = Effect.fnUntraced(function*(options: {
   })
 })
 
+/** The configured agents as adapters see them. */
+export const agentInfos = (agents: Readonly<Record<string, Agent>>): ReadonlyArray<AgentInfo> =>
+  Object.entries(agents).map(([name, agent]) => ({
+    name,
+    emoji: agent.emoji,
+    ...(agent.logo === undefined ? {} : { logo: agent.logo })
+  }))
+
 export const layer: Layer.Layer<Chat, never, BridgeConfig | ChildProcessSpawner.ChildProcessSpawner> = Layer.effect(
   Chat,
   Effect.gen(function*() {
     const config = yield* BridgeConfig
-    return yield* make({ adapters: enabledAdapters(config.adapters), commands: Commands.specs(config.agents ?? {}) })
+    return yield* make({
+      adapters: enabledAdapters(config.adapters),
+      commands: Commands.specs(config.agents ?? {}),
+      agents: agentInfos(config.agents ?? {})
+    })
   })
 )

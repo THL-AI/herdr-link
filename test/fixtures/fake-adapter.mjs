@@ -5,11 +5,13 @@ import { createInterface } from "node:readline"
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`)
 const notify = (method, params) => write({ method, params })
 let config = {}
+let agents = []
 const HANG = Symbol("hang")
 
 const handlers = {
   hello(params) {
     config = params.config
+    agents = params.agents
     if (config.reject) throw { code: -32003, message: "bad config" }
     console.error(`hello from fake, ${params.commands.length} commands`)
     return {
@@ -28,6 +30,7 @@ const handlers = {
       const seen = ["FAKE_TOKEN", "OTHER_SECRET"].filter((key) => process.env[key] !== undefined)
       notify("message.received", { place, message: "2", text: seen.join(","), attachments: [] })
     }
+    if (text === "agents") notify("message.received", { place, message: "4", text: JSON.stringify(agents), attachments: [] })
     if (text === "config") notify("message.received", { place, message: "3", text: JSON.stringify(config), attachments: [] })
     return { message: "1" }
   }

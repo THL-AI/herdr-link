@@ -68,6 +68,8 @@ describe("Chat methods", () => {
     assert.isTrue(Exit.isSuccess(decode(hello("space new"))))
     assert.isTrue(Exit.isFailure(decode(hello("Space"))))
     assert.isTrue(Exit.isFailure(decode(hello("a b c d"))))
+    assert.isTrue(Exit.isSuccess(decode({ ...hello("space new"), agents: [{ name: "claude", emoji: "✳️" }] })))
+    assert.isTrue(Exit.isFailure(decode({ ...hello("space new"), agents: [{ name: "", emoji: "✳️" }] })))
   })
 
   it("keeps method names in sync with their table keys", () => {

@@ -840,7 +840,7 @@ describe("adapters that drive herdr (protocol for programs)", () => {
         method: "tab.new",
         params: { space: "sp1", name: "spec", folder: "/p/api", argv: ["claude"], task: "write the spec" }
       })
-      yield* env.take // "is starting"
+      // No "is starting" post: the program asked for that agent itself (the next post is the refusal below).
 
       yield* Queue.offer(env.chatEvents, {
         _tag: "thread.created",
