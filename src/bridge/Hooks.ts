@@ -8,13 +8,27 @@ import { connect, createServer } from "node:net"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
+/** One question of Claude Code's AskUserQuestion form. */
+export const Question = Schema.Struct({
+  question: Schema.String,
+  header: Schema.optionalKey(Schema.String),
+  multiSelect: Schema.Boolean,
+  options: Schema.NonEmptyArray(Schema.Struct({
+    label: Schema.String,
+    description: Schema.optionalKey(Schema.String)
+  }))
+})
+export type Question = typeof Question.Type
+
 export const HookMessage = Schema.Struct({
   terminal: Schema.NonEmptyString,
   event: Schema.Literals(["Stop", "StopFailure", "Notification", "PreToolUse"]),
   text: Schema.optionalKey(Schema.String),
   kind: Schema.optionalKey(Schema.String),
   message: Schema.optionalKey(Schema.String),
-  error: Schema.optionalKey(Schema.String)
+  error: Schema.optionalKey(Schema.String),
+  /** PreToolUse of AskUserQuestion: the form the agent is about to show. */
+  questions: Schema.optionalKey(Schema.NonEmptyArray(Question))
 })
 export type HookMessage = typeof HookMessage.Type
 

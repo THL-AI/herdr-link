@@ -79,6 +79,23 @@ group = "-1001234567890"
 
 Other adapters document their own; see [writing an adapter](adapters.md).
 
+`herdr-link adapter <name> on | off` and `herdr-link adapter <name> dashboard
+on | off` change `enabled` and `dashboard` for you (the rest of the file,
+comments too, stays as it is) and restart the service.
+
+## While it runs
+
+`~/.local/state/herdr-link/` (`$HERDR_LINK_STATE`) holds what changes without
+a restart, next to the hook socket:
+
+- `state.json`: `{"desk": true}` while you are at the computer: new messages
+  go out without a push. Written by `herdr-link desk on | off` and the Herdr
+  bar; read on every message.
+- `status.json`: what the bridge is doing (version, each chat app connected or
+  its error, the hooks, the desk switch), rewritten on every change and at
+  least every 30 s, `running: false` when it stops. `herdr-link status
+  [--json]` and the Herdr bar read it.
+
 ### `[agents.<name>]`
 
 | key | |

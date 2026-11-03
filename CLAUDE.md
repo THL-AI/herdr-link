@@ -20,11 +20,14 @@ The `herdr-link` CLI (`src/cli/`): `init` (setup wizard: token, intent, owner
 and guild found through the Discord API, agents on PATH, config + `.env`,
 hooks, service; Discord only), `telegram` (reads the bot's recent updates:
 groups with topics/admin checks and user ids, prints the config section),
+`status [--json]` (reads `status.json`), `desk on | off`, `adapter <name>
+on | off` / `adapter <name> dashboard on | off` (one line of the TOML, then a
+service restart), `mod install | uninstall` (the herdr-app bar),
 `doctor [--fix] [--yes]` (every check knows its fix: hooks,
 service, Message Content intent, `hc server start`, `init`; installing herdr
 through its official script `curl -fsSL https://releases.herdr.dev/core/install.sh | sh`
 (app: `.../app/install.sh`) only after asking), `run`, `service install | uninstall | status |
-logs` (launchd on macOS, a systemd user unit on Linux, both through the
+logs | restart` (launchd on macOS, a systemd user unit on Linux, both through the
 user's login shell with this Node), `hooks install | uninstall`. In a checkout
 the pnpm scripts `hooks:install`, `service:install`… call it.
 
@@ -79,6 +82,15 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
 - `docs/`: user docs (configuration, agents, writing an adapter,
   troubleshooting). Keep them true to the code; the README stays chat-agnostic
   (Discord is the built-in adapter, not the product).
+- `src/bridge/LocalState.ts`: `~/.local/state/herdr-link/state.json` (the
+  desk switch, written by the CLI and the mod, read on every post) and
+  `status.json` (written by `main.ts` on a change, at least every 30 s).
+- `mod/herdr-link/`: the herdr-app mod (gpui-kit JS, not TypeScript; types in
+  `~/.config/herdr-app/*.d.ts`). A kept `window` overlay (shipped layouts
+  refuse new blocks), opened by `mod install` with `herdr-app do mod.open`;
+  `link.js` (node, bin, state paths) is written at install. Check it with
+  `herdr-app check <folder>`; a click target must stop mouse-down
+  propagation or the press drags the window.
 - `hooks/herdr-link-hook.mjs`: the shared agent hook (plain Node, fast). `bin/`:
   entry points runnable from anywhere (they register tsx and load
   `~/.config/herdr-link/.env`, or a `.env` in a checkout).
@@ -121,6 +133,17 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   herdr". A "trust this folder?" question gets only a Trust button (`trust`
   keys). One open prompt per terminal, in memory; after a restart the snapshot
   reopens prompts still blocked and stale buttons are cleared.
+- **Question forms** (Claude Code's AskUserQuestion): the hook's `PreToolUse`
+  brings the questions, `blocked` + kind `question` says the form is on
+  screen (up to 1.5 s apart, either order; without the hook's copy the plain
+  "⚠️ Needs you" goes out). One message per question, options as buttons:
+  single select → its digit (moves on; the only question submits), multi
+  select → digits toggle, Next/Submit → `tab`; a form of several questions or
+  a multi select ends on a review screen → `1`. A message in the thread is the
+  owner's own answer: single select → the "Type something" digit, then
+  `terminal.send` with `force`; multi select can't take typed text (digits go
+  into it), so `esc` closes the form and the text is sent as a message. Keys
+  that change the screen are 400 ms apart, in a fork. In memory only.
 - **New threads:** a thread the owner creates in one of the bot's space rooms
   → a new tab there (`herdr-app do tab.new`). A leading agent emoji (`✳️api`,
   compared without U+FE0F) picks the agent; otherwise "Who works here?" with
@@ -144,6 +167,10 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   in an adapter's section turns it off, editing the last one to say so once)
   and quick tasks: a DM text → "where?" with the spaces → a new tab whose
   agent gets the text as its first message.
+- **At the desk / away:** while `state.json` says `desk`, every
+  `message.post` and `ask` carries `silent: true` (Discord
+  SuppressNotifications, Telegram `disable_notification`); edits never push
+  anyway. Switched from the Herdr bar or `herdr-link desk`.
 - Later idea: give a client read-only access to one project channel.
 
 ## Chat protocol (v1)
@@ -180,6 +207,12 @@ rest goes to the adapter in `hello`. Agent keys verified live:
 - Claude Code 2.1.316: `1` Yes, `2` Yes and don't ask again, `3` auto mode,
   `4` No, `esc` cancels (= No; status goes `idle`, not `done`). A new folder
   first shows a trust dialog without a herdr status.
+- Claude Code 2.1.317 AskUserQuestion: a tab bar (questions, Submit) when
+  there are several; `1`..`n` pick (single select, moves on) or toggle (multi
+  select, cursor stays), `n+1` "Type something" (single: cursor there, typed
+  text + Enter answers), then "Chat about this" (declines the form); `tab`
+  next; review screen `1` Submit answers, `2` Cancel; `esc` cancels.
+  `terminal.send` refuses a blocked terminal unless `force`.
 - Grok Build: `1` always-approve everything (never send), `2` always allow this
   command, `3` Yes, `4` No (goes `idle`), `5` never allow; digits act at once.
   Safe commands run without asking. A new folder asks "trust this folder?"

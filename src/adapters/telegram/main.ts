@@ -337,11 +337,13 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
       return {}
     }),
 
-  "message.post": ({ place, text, files, actions, replyTo }) =>
+  "message.post": ({ place, text, files, actions, replyTo, silent }) =>
     Effect.gen(function*() {
       const s = yield* current()
+      const quiet = silent === true ? { disable_notification: true } : {}
       const base = {
         ...target(s, place),
+        ...quiet,
         ...(replyTo === undefined ? {} : { reply_parameters: { message_id: Number(replyTo), allow_sending_without_reply: true } })
       }
       const markup = actions === undefined ? {} : { reply_markup: keyboard(actions) }
@@ -352,7 +354,7 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
       }
       for (const [index, file] of all.entries()) {
         const last = index === all.length - 1
-        const sent = yield* sendFile(target(s, place), file.path, file.name, first === undefined && last ? markup : {})
+        const sent = yield* sendFile({ ...target(s, place), ...quiet }, file.path, file.name, first === undefined && last ? markup : {})
         first ??= sent
       }
       return { message: MessageId.make(String(first!.message_id)) }
@@ -378,10 +380,11 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
       return {}
     }),
 
-  ask: ({ place, text, choices }) =>
+  ask: ({ place, text, choices, silent }) =>
     Effect.gen(function*() {
       const s = yield* current()
-      const sent = yield* sendText({ ...target(s, place), reply_markup: keyboard(choices) }, text)
+      const quiet = silent === true ? { disable_notification: true } : {}
+      const sent = yield* sendText({ ...target(s, place), ...quiet, reply_markup: keyboard(choices) }, text)
       return { message: MessageId.make(String(sent.message_id)) }
     })
 })

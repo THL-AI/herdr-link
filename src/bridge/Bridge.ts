@@ -40,7 +40,8 @@ import type { Action, Capabilities, Place } from "../protocol/Chat.ts"
 import { ActionId, MessageId, RoomId, ThreadId } from "../protocol/Chat.ts"
 import { ErrorCode } from "../protocol/JsonRpc.ts"
 import type { AdapterToBridge, Params } from "../protocol/Methods.ts"
-import type { HookMessage } from "./Hooks.ts"
+import type { HookMessage, Question } from "./Hooks.ts"
+import * as Questions from "./Questions.ts"
 import * as Store from "./Store.ts"
 import { chunk } from "./Text.ts"
 
@@ -52,6 +53,10 @@ const replyGrace = Duration.seconds(4)
  * becomes the agent's first task instead of getting lost.
  */
 const firstMessageGrace = Duration.seconds(2)
+/** How long a question waits for the hook's copy of its form before it is posted as plain text. */
+const questionGrace = Duration.millis(1500)
+/** Between keys that change the form's screen and the next ones. */
+const formSettle = Duration.millis(400)
 /** A turn gets a status message once it has run this long (quick answers need none). */
 const showProgressAfter = 45_000
 /** The agent's latest notes shown in it, and their length. */
@@ -132,8 +137,21 @@ export const run = Effect.fnUntraced(function*(options: {
   readonly withoutDashboard?: ReadonlyArray<string>
   /** How often a working agent's status message may be edited; off when omitted. */
   readonly progressEvery?: Duration.Input
+  /** True while the owner is at the computer: new messages go out without a push. */
+  readonly atDesk?: () => boolean
 }) {
-  const { chat, core, agents } = options
+  const { core, agents } = options
+  const atDesk = options.atDesk ?? (() => false)
+  /** The adapters, with new messages and questions marked silent while the owner is at the desk. */
+  const chat: Chat["Service"] = {
+    ...options.chat,
+    call: (adapter, method, params) =>
+      options.chat.call(
+        adapter,
+        method,
+        (method === "message.post" || method === "ask") && atDesk() ? { ...params, silent: true } : params
+      )
+  }
   /** Inputs the bridge schedules for itself (a new thread's tab, started a moment later). */
   const later = yield* Queue.unbounded<Input>()
   /** "api", "api · laptop" (this bridge's machine), or "api · build-box" (a space on another herdr machine). */
@@ -483,6 +501,130 @@ export const run = Effect.fnUntraced(function*(options: {
       )
     })
 
+  // Question forms (AskUserQuestion): the hook brings the questions, the status says the
+  // form is on screen; one message per question, answered with the form's keys.
+
+  interface Form {
+    readonly id: number
+    readonly address: string
+    readonly questions: ReadonlyArray<Question>
+    step: number
+    picked: Set<number>
+    /** The current question's message. */
+    posted: ReadonlyArray<Posted>
+    text: string
+  }
+  /** The questions of each terminal's latest AskUserQuestion, until its form opens. */
+  const asked = new Map<string, ReadonlyArray<Question>>()
+  const forms = new Map<string, Form>()
+  let nextForm = 1
+
+  const isQuestionOnScreen = (address: string) => {
+    const status = terminals.get(address)?.status
+    return status?.state === "blocked" && status.kind === "question"
+  }
+
+  /** An answered question no longer needs its "tap one…" line. */
+  const withoutHint = (text: string) => text.replace(/\n\n-# [^\n]*$/, "")
+
+  const editForm = (posted: ReadonlyArray<Posted>, text: string, actions?: ReadonlyArray<Action>) =>
+    Effect.forEach(posted, ({ adapter, place, message }) =>
+      chat.call(adapter, "message.edit", { place, message, text, actions: actions ?? [] }).pipe(
+        Effect.catch((error) => Effect.logWarning(`${adapter}: cannot update the question: ${error.message}`))
+      ), { discard: true })
+
+  const postStep = (form: Form) =>
+    Effect.gen(function*() {
+      form.text = speaker(form.address, Questions.text(form.questions, form.step))
+      form.posted = yield* postToTab(form.address, form.text, Questions.actions(form.id, form.questions, form.step, form.picked))
+    })
+
+  const openForm = (address: string) =>
+    Effect.gen(function*() {
+      const questions = asked.get(address)
+      if (questions === undefined || forms.has(address)) return
+      asked.delete(address)
+      const form: Form = { id: nextForm++, address, questions, step: 0, picked: new Set(), posted: [], text: "" }
+      forms.set(address, form)
+      yield* postStep(form)
+    })
+
+  /** The status says a question is on screen: the form, or (no hook copy) the plain status. */
+  const questionShown = (address: string, status: Terminal["status"]) =>
+    Effect.gen(function*() {
+      if (forms.has(address)) return
+      if (asked.has(address)) return yield* openForm(address)
+      const text = statusText("blocked", status)
+      if (text !== undefined) yield* postToTab(address, speaker(address, text))
+    })
+
+  const closeForm = (form: Form, outcome: string) =>
+    Effect.gen(function*() {
+      forms.delete(form.address)
+      yield* editForm(form.posted, `${withoutHint(form.text)}\n→ ${outcome}`)
+    })
+
+  /** Keys into the form, in the background (the screen needs a moment between steps). */
+  const formKeys = (address: string, steps: ReadonlyArray<ReadonlyArray<string>>, then?: Effect.Effect<void, CoreError>) =>
+    Effect.gen(function*() {
+      for (const [index, keys] of steps.entries()) {
+        if (index > 0) yield* Effect.sleep(formSettle)
+        yield* core.call("terminal.keys", { terminal: address, keys: [...keys] })
+      }
+      if (then !== undefined) yield* Effect.sleep(formSettle).pipe(Effect.andThen(then))
+    }).pipe(
+      Effect.catch((error) => Effect.logWarning(`cannot answer the question in ${address}: ${error.message}`)),
+      Effect.forkScoped
+    )
+
+  /** The current question is answered (its keys already typed): show it, go on, submit at the end. */
+  const advance = (form: Form, answer: string, keys: ReadonlyArray<string>, then?: Effect.Effect<void, CoreError>) =>
+    Effect.gen(function*() {
+      yield* editForm(form.posted, `${withoutHint(form.text)}\n→ ${answer}`)
+      form.step++
+      form.picked = new Set()
+      const done = form.step >= form.questions.length
+      const submit = done && Questions.needsReview(form.questions) ? [["1"]] : []
+      if (done) forms.delete(form.address)
+      yield* formKeys(form.address, [keys, ...submit], then)
+      if (!done) yield* postStep(form)
+    })
+
+  const answerQuestion = (adapter: string, params: Params<AdapterToBridge["action.pressed"]>) =>
+    Effect.gen(function*() {
+      const parsed = Questions.parseAction(params.action)
+      if (parsed === undefined) return
+      const form = [...forms.values()].find((f) => f.id === parsed.form)
+      if (form === undefined || form.step !== parsed.step) {
+        // Answered already, or from before a restart: just drop the stale buttons.
+        return yield* chat.call(adapter, "message.edit", { place: params.place, message: params.message, actions: [] }).pipe(
+          Effect.ignore
+        )
+      }
+      const question = form.questions[form.step]!
+      if (parsed.choice === "next") {
+        const labels = [...form.picked].sort((a, b) => a - b).map((i) => question.options[i]!.label)
+        return yield* advance(form, labels.length === 0 ? "(none)" : labels.join(", "), ["tab"])
+      }
+      const option = question.options[parsed.choice]
+      if (option === undefined) return
+      if (!question.multiSelect) return yield* advance(form, option.label, [Questions.optionKey(parsed.choice)])
+      if (form.picked.has(parsed.choice)) form.picked.delete(parsed.choice)
+      else form.picked.add(parsed.choice)
+      yield* formKeys(form.address, [[Questions.optionKey(parsed.choice)]])
+      yield* editForm(form.posted, form.text, Questions.actions(form.id, form.questions, form.step, form.picked))
+    })
+
+  /** The owner wrote while the form is open: their own answer, or (multi select) a message instead. */
+  const answerInWords = (form: Form, text: string) =>
+    Effect.gen(function*() {
+      const question = form.questions[form.step]!
+      const send = core.call("terminal.send", { terminal: form.address, text, force: true }).pipe(Effect.asVoid)
+      if (!question.multiSelect) return yield* advance(form, text, [Questions.ownWordsKey(question)], send)
+      yield* closeForm(form, "closed; your message went to the agent")
+      yield* formKeys(form.address, [["esc"]], send)
+    })
+
   /** The tab whose thread this is, for this adapter. */
   const tabOfThread = (s: Store.Store, adapter: string, thread: string) => {
     const threads = s.state().adapters[adapter]?.threads ?? {}
@@ -565,6 +707,15 @@ export const run = Effect.fnUntraced(function*(options: {
         byEmoji?.address ??
         (live.length === 1 ? live[0]!.address : undefined)
       if (target === undefined) return yield* askWhom(adapter, params, live.map((t) => t.address))
+      const form = forms.get(target)
+      if (form !== undefined && params.text.trim() !== "") {
+        yield* answerInWords(form, byEmoji !== undefined && target === byEmoji.address ? named!.rest : params.text.trim())
+        return yield* chat.call(adapter, "react", {
+          place: params.place,
+          message: MessageId.make(params.message),
+          emoji: { kind: "unicode", value: "👀" }
+        }).pipe(Effect.ignore)
+      }
       yield* deliver(adapter, params, target, byEmoji !== undefined && target === byEmoji.address ? named!.rest : params.text)
     }).pipe(Effect.catch((error) => replyError(adapter, params, error)))
 
@@ -1096,7 +1247,13 @@ export const run = Effect.fnUntraced(function*(options: {
       case "Notification":
         return Effect.void // permission prompts: next step
       case "PreToolUse":
-        return message.text === undefined ? Effect.void : addNote(message.terminal, message.text)
+        return Effect.gen(function*() {
+          if (message.text !== undefined) yield* addNote(message.terminal, message.text)
+          if (message.questions === undefined) return
+          asked.set(message.terminal, message.questions)
+          // The status may have said "question" before the hook's copy arrived.
+          if (isQuestionOnScreen(message.terminal)) yield* openForm(message.terminal)
+        })
     }
   }
 
@@ -1138,6 +1295,9 @@ export const run = Effect.fnUntraced(function*(options: {
           const state = event.status?.state
           const open = prompts.get(event.address)
           if (open !== undefined && state !== "blocked") yield* closePrompt(open, "answered in herdr")
+          const form = forms.get(event.address)
+          if (form !== undefined && state !== "blocked") yield* closeForm(form, "answered in herdr")
+          if (state === "done" || state === "idle") asked.delete(event.address)
           if (state === "working") yield* startProgress(event.address)
           else if (state === "blocked") {
             const entry = progress.get(event.address)
@@ -1146,6 +1306,14 @@ export const run = Effect.fnUntraced(function*(options: {
           if (state === undefined || state === before) return
           if (state === "blocked" && event.status?.kind === "permission") {
             return yield* openPrompt(event.address, event.status)
+          }
+          if (state === "blocked" && event.status?.kind === "question") {
+            if (asked.has(event.address)) return yield* openForm(event.address)
+            // Wait a moment for the hook's copy of the form.
+            return yield* Effect.sleep(questionGrace).pipe(
+              Effect.andThen(Queue.offer(later, { from: "question", address: event.address })),
+              Effect.forkScoped
+            )
           }
           const status = statusText(state, event.status)
           if (status === undefined) return
@@ -1178,6 +1346,9 @@ export const run = Effect.fnUntraced(function*(options: {
           yield* finishProgress(event.address, "gone")
           const open = prompts.get(event.address)
           if (open !== undefined) yield* closePrompt(open, "the terminal is gone")
+          const form = forms.get(event.address)
+          if (form !== undefined) yield* closeForm(form, "the terminal is gone")
+          asked.delete(event.address)
         })
       default:
         return Effect.void
@@ -1208,6 +1379,8 @@ export const run = Effect.fnUntraced(function*(options: {
           ? answerTask(event.adapter, event.params)
           : event.params.action.startsWith("send:")
           ? answerSend(event.adapter, event.params)
+          : event.params.action.startsWith("q:")
+          ? answerQuestion(event.adapter, event.params)
           : answerPrompt(event.adapter, event.params)
       case "thread.deleted":
         return threadDeleted(event.adapter, event.params.thread)
@@ -1223,6 +1396,7 @@ export const run = Effect.fnUntraced(function*(options: {
     | { readonly from: "tick" }
     | { readonly from: "dashboard" }
     | { readonly from: "progress" }
+    | { readonly from: "question"; readonly address: string }
     | {
       readonly from: "start"
       readonly adapter: string
@@ -1252,6 +1426,10 @@ export const run = Effect.fnUntraced(function*(options: {
           return updateDashboards
         case "progress":
           return updateProgress
+        case "question":
+          return isQuestionOnScreen(input.address)
+            ? questionShown(input.address, terminals.get(input.address)?.status)
+            : Effect.void
         case "start":
           return startTab(input.adapter, input.spaceId, input.thread, input.agent, input.name).pipe(
             Effect.catch((error) => Effect.logWarning(`cannot open a tab for a new thread: ${error.message}`))

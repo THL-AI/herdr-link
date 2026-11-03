@@ -169,11 +169,38 @@ bot's `/` menu. Nothing else to set.
 - **Commands:** `/status` anywhere, `/screen` in a tab's channel, `/space new`
   for a new herdr space.
 
+## At the computer
+
+```sh
+herdr-link mod install
+```
+
+puts a small bar in the Herdr window: a dot (green: every chat app connected
+and the hooks current; yellow: something to look at; red: herdr-link isn't
+running), your chat apps, and a switch:
+
+- **🖥 At the desk:** messages still arrive in the chat, without a push
+  (Discord's silent messages, Telegram's `disable_notification`).
+- **📱 Away:** every message pushes to your phone, as before.
+
+Drag the bar where you like; it stays there and comes back after a restart
+(command palette → herdr-link shows or hides it). Click it for the panel: turn
+a chat app on or off, its live status in your DMs, update the hooks, restart,
+run the doctor, read the log. Without Herdr the same is on the command line:
+
+```sh
+herdr-link desk on         # at the desk (off: away)
+herdr-link status          # running? which chat apps are connected?
+herdr-link adapter telegram off            # writes the config, restarts
+herdr-link adapter discord dashboard off
+```
+
 ## Keeping it running
 
 ```sh
 herdr-link doctor          # is everything fine?
 herdr-link doctor --fix    # repair what it can
+herdr-link status          # what the running bridge says right now
 herdr-link service logs    # what it has been doing
 ```
 
@@ -183,6 +210,7 @@ herdr-link service logs    # what it has been doing
 **Removing:**
 
 ```sh
+herdr-link mod uninstall
 herdr-link service uninstall
 herdr-link hooks uninstall
 npm uninstall -g @thl-ai/herdr-link

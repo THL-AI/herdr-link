@@ -34,6 +34,11 @@ const Text = Schema.String.annotate({
   description: "Markdown (the Discord subset: bold, italics, code, code blocks, links). Adapters convert or strip it."
 })
 
+const Silent = Schema.Boolean.annotate({
+  description: "true: deliver without a push notification (the owner is at the computer). Adapters that " +
+    "cannot post silently post normally."
+})
+
 // Bridge → adapter
 
 export const BridgeToAdapter = {
@@ -97,7 +102,8 @@ export const BridgeToAdapter = {
       text: Text,
       files: Schema.optionalKey(Schema.Array(OutgoingFile)),
       actions: Schema.optionalKey(Schema.Array(Action)),
-      replyTo: Schema.optionalKey(MessageId)
+      replyTo: Schema.optionalKey(MessageId),
+      silent: Schema.optionalKey(Silent)
     }),
     Schema.Struct({ message: MessageId })
   ),
@@ -125,7 +131,8 @@ export const BridgeToAdapter = {
     Schema.Struct({
       place: Place,
       text: Text,
-      choices: Schema.NonEmptyArray(Choice)
+      choices: Schema.NonEmptyArray(Choice),
+      silent: Schema.optionalKey(Silent)
     }),
     Schema.Struct({ message: MessageId })
   )

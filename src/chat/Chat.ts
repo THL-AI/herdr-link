@@ -46,6 +46,14 @@ export interface ConnectedAdapter {
   readonly capabilities: Capabilities
 }
 
+/** One configured adapter as the status file shows it. */
+export interface AdapterState {
+  readonly name: string
+  readonly connected: boolean
+  /** Why it is not connected (it is restarting, or stopped for good). */
+  readonly error?: string
+}
+
 /** The adapter is unknown, not connected yet, or restarting. */
 export class AdapterUnavailable extends Schema.TaggedError<AdapterUnavailable>()("AdapterUnavailable", {
   adapter: Schema.String
@@ -55,6 +63,8 @@ export type ChatError = RpcError | PeerClosed | AdapterUnavailable
 
 export class Chat extends Context.Service<Chat, {
   readonly connected: Effect.Effect<ReadonlyArray<ConnectedAdapter>>
+  /** Every started adapter: connected, or its last error. */
+  readonly states: Effect.Effect<ReadonlyArray<AdapterState>>
   readonly call: <K extends RequestName<BridgeToAdapter>>(
     adapter: string,
     method: K,

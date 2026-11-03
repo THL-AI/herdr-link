@@ -95,10 +95,10 @@ All of these are requests: answer each with a result or an error.
 | `room.delete` | `room` | `{}` | Delete a room you made. The bridge empties it first. |
 | `thread.ensure` | `room?`, `thread?`, `name?`, `topic?` | `thread`, `created` | Same for a thread in `room`: create, or reuse by id, move into `room`, rename and set the topic when given. `name` is only required to create. |
 | `thread.delete` | `thread` | `{}` | Delete a thread you made, with its history. |
-| `message.post` | `place`, `text`, `files?`, `actions?`, `replyTo?` | `message` | Post. `text` is short Markdown (bold, italics, code, code blocks, links): convert or strip it. `files` are local paths. `actions` are buttons. |
+| `message.post` | `place`, `text`, `files?`, `actions?`, `replyTo?`, `silent?` | `message` | Post. `text` is short Markdown (bold, italics, code, code blocks, links): convert or strip it. `files` are local paths. `actions` are buttons. `silent: true`: the owner is at the computer, deliver without a push if your platform can (else post normally). |
 | `message.edit` | `place`, `message`, `text?`, `actions?` | `{}` | Replace the text and/or the buttons; `actions: []` removes them. |
 | `react` | `place`, `message`, `emoji` | `{}` | Add the bot's reaction. |
-| `ask` | `place`, `text`, `choices` | `message` | Post a question and **return at once**. Report the answer later as `action.pressed` with the choice's id, whether the owner pressed a button or reacted with the choice's emoji. |
+| `ask` | `place`, `text`, `choices`, `silent?` | `message` | Post a question and **return at once**. Report the answer later as `action.pressed` with the choice's id, whether the owner pressed a button or reacted with the choice's emoji. |
 
 An emoji is `{"kind": "unicode", "value": "👀"}` or `{"kind": "custom", "name": "claude"}`
 (a custom emoji you know by name, such as an agent's logo).

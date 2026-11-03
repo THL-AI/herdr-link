@@ -32,6 +32,10 @@ with a note in the release.
 - **0.4** Telegram (topics as tabs, the bot's chat as the control room); a
   long turn's progress in one live status message; the first message of a
   new thread becomes its agent's task; `enabled` and `dashboard` switches.
+- **0.5.0** Question forms (Claude Code's AskUserQuestion) answered from the
+  chat; at the desk or away (no pushes while you sit at the computer); a bar
+  in the Herdr window with the link's state and basic settings;
+  `herdr-link status`, `desk`, `adapter`, `mod`.
 
 ## 0.5: proven on real use
 
@@ -64,6 +68,8 @@ whatever it finds missing goes in before the freeze.
 
 - [ ] More agents with verified keys: Codex CLI, Gemini CLI, opencode
 - [ ] `/screen` that follows the agent for a while instead of one snapshot
+- [x] At the desk or away: no pushes while you sit at the computer; a bar
+      in the Herdr window with the link's state and basic settings
 - [ ] The dashboard pinned in the DM
 - [ ] Clearer messages when something is off: herdr app closed, agent
       signed out, a hook missing

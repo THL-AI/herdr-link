@@ -14,6 +14,7 @@ up; adding another is configuration, not code.
 | progress on a long turn | the agent's status (`working`) for the time, and the shared hook for its latest notes |
 | typing your messages | `terminal.send`: works with any program |
 | Allow / Deny buttons | the agent's `allow` / `always` / `deny` / `trust` keys, pressed with `terminal.keys` |
+| question forms with buttons | the shared hook's `PreToolUse` of Claude Code's `AskUserQuestion` (the questions and options), then the form's keys: an option's digit, `tab`, "Type something" for your own words, `1` to submit. Without it a question shows as "⚠️ Needs you". |
 | starting it in a new tab | `argv`, or `template` (run as a program of that name) |
 | recognizing it in a tab | `template`, then the status's `app` (`claude-code` → `claude`), then the program's name |
 
@@ -84,6 +85,8 @@ JSON line:
 - `event`: `Stop` (a turn ended; `text` is the reply), `StopFailure` (a turn
   failed; `error` says why), `Notification`, or `PreToolUse` (`text` is the
   agent's latest note, shown in the turn's progress; send it only when it
-  changed is fine, repeats are ignored).
+  changed is fine, repeats are ignored; `questions`, the form the agent is
+  about to show, in Claude Code's AskUserQuestion shape: `[{question, header?,
+  multiSelect, options: [{label, description?}]}]`).
 - Keep it fast and never fail the agent: if the socket is missing, no bridge
   is running; just exit.

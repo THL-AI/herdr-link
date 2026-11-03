@@ -4,18 +4,25 @@ import { join } from "node:path"
 import { doctor } from "./doctor.ts"
 import * as Hooks from "./hooks.ts"
 import { init } from "./init.ts"
+import * as Mod from "./mod.ts"
 import { packageRoot } from "./paths.ts"
 import { ok } from "./prompt.ts"
 import * as Service from "./service.ts"
+import * as Settings from "./settings.ts"
 import { telegram } from "./telegram.ts"
 
 const usage = `herdr-link: your herdr agents in a chat app
 
   herdr-link init                 set it up (bot, config, hooks, service)
   herdr-link doctor [--fix]       check every piece; --fix repairs what it can
+  herdr-link status [--json]      is it running, which chat apps are connected
+  herdr-link desk [on | off]      at the computer (no pushes) or away (pushes)
+  herdr-link adapter <name> on | off             start that chat app or not
+  herdr-link adapter <name> dashboard on | off   its live status in your DMs
   herdr-link run [config.toml]    run the bridge in the foreground
-  herdr-link service install | uninstall | status | logs
+  herdr-link service install | uninstall | restart | status | logs
   herdr-link hooks install | uninstall
+  herdr-link mod install | uninstall   its bar in the Herdr window
   herdr-link telegram             find the ids a Telegram setup needs
   herdr-link --version`
 
@@ -41,7 +48,7 @@ const main = async () => {
       return
     case "service": {
       const service = Service.manager()
-      if (sub === "install" || sub === "uninstall") {
+      if (sub === "install" || sub === "uninstall" || sub === "restart") {
         for (const line of service[sub]()) ok(line)
         return
       }
@@ -49,6 +56,19 @@ const main = async () => {
       if (sub === "logs") return console.log(service.logs())
       break
     }
+    case "status":
+      process.exitCode = Settings.status(sub === "--json")
+      return
+    case "desk":
+      process.exitCode = Settings.desk(sub)
+      return
+    case "adapter":
+      process.exitCode = Settings.adapter([sub, ...rest])
+      return
+    case "mod":
+      if (sub !== "install" && sub !== "uninstall") break
+      process.exitCode = sub === "install" ? Mod.install() : Mod.uninstall()
+      return
     case "telegram":
       process.exitCode = await telegram()
       return

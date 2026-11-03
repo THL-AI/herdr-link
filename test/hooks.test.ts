@@ -61,12 +61,23 @@ describe("agent hook", () => {
       yield* runHook(socket, { hook_event_name: "Stop", transcript_path: transcript })
       // Before a tool call: the agent's latest note.
       yield* runHook(socket, { hook_event_name: "PreToolUse", transcript_path: transcript })
+      // A question form: its questions, cleaned up.
+      yield* runHook(socket, {
+        hook_event_name: "PreToolUse",
+        tool_name: "AskUserQuestion",
+        tool_input: { questions: [{ question: "Pick one", header: "One", options: [{ label: "A", description: "first" }, { label: "" }, "junk"] }] }
+      })
 
-      const got = yield* messages.pipe(Stream.take(3), Stream.runCollect)
+      const got = yield* messages.pipe(Stream.take(4), Stream.runCollect)
       assert.deepStrictEqual([...got], [
         { terminal: "t5", event: "Stop", text: "grok says hi" },
         { terminal: "t5", event: "Stop", text: "Looking.\n\nFixed: missing import." },
-        { terminal: "t5", event: "PreToolUse", text: "Fixed: missing import." }
+        { terminal: "t5", event: "PreToolUse", text: "Fixed: missing import." },
+        {
+          terminal: "t5",
+          event: "PreToolUse",
+          questions: [{ question: "Pick one", header: "One", multiSelect: false, options: [{ label: "A", description: "first" }] }]
+        }
       ])
     }).pipe(Effect.scoped))
 

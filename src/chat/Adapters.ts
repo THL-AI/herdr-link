@@ -34,6 +34,7 @@ export const make = Effect.fnUntraced(function*(options: {
   const callTimeout = Duration.fromInputUnsafe(options.callTimeout ?? defaultCallTimeout)
   const events = yield* Queue.unbounded<ChatEvent>()
   const connections = new Map<string, Connection>()
+  const errors = new Map<string, string>()
 
   const handlers = (adapter: string): Handlers<typeof AdapterToBridge> => {
     const forward = <E extends OwnerEvent>(tag: E["_tag"]) => (params: E["params"]) =>
@@ -63,6 +64,7 @@ export const make = Effect.fnUntraced(function*(options: {
     Effect.gen(function*() {
       const connection = yield* connect({ name, section, commands: options.commands, handlers: () => handlers(name) })
       connections.set(name, connection)
+      errors.delete(name)
       yield* Effect.logInfo(`connected: ${connection.info.name} ${connection.info.version}`)
       yield* Queue.offer(events, {
         _tag: "adapter.connected",
@@ -76,6 +78,7 @@ export const make = Effect.fnUntraced(function*(options: {
       Effect.scoped,
       Effect.tapError((error) =>
         Effect.gen(function*() {
+          errors.set(name, error.message)
           if (connections.delete(name)) {
             yield* Queue.offer(events, { _tag: "adapter.disconnected", adapter: name, reason: error.message })
           }
@@ -98,6 +101,12 @@ export const make = Effect.fnUntraced(function*(options: {
   return Chat.of({
     connected: Effect.sync(() =>
       [...connections.values()].map(({ name, info, capabilities }) => ({ name, info, capabilities }))
+    ),
+    states: Effect.sync(() =>
+      Object.keys(options.adapters).map((name) => {
+        const error = errors.get(name)
+        return { name, connected: connections.has(name), ...(error === undefined ? {} : { error }) }
+      })
     ),
     call: (adapter, method, params) =>
       Effect.suspend((): Effect.Effect<Result<typeof BridgeToAdapter[typeof method]>, ChatError> => {

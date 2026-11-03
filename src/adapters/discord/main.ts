@@ -22,6 +22,7 @@ import {
   type Guild,
   type Message,
   type MessageCreateOptions,
+  MessageFlags,
   type OverwriteResolvable,
   OverwriteType,
   Partials,
@@ -381,7 +382,7 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
 
   "room.delete": ({ room }) => deleteChannel(room, ChannelType.GuildCategory),
 
-  "message.post": ({ place, text, files, actions, replyTo }) =>
+  "message.post": ({ place, text, files, actions, replyTo, silent }) =>
     Effect.gen(function*() {
       const s = yield* current()
       const channel = yield* channelOf(s, place)
@@ -390,7 +391,8 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
         ...(text === "" ? {} : { content: text }),
         ...(files === undefined ? {} : { files: files.map((f) => ({ attachment: f.path, ...(f.name ? { name: f.name } : {}) })) }),
         ...(actions === undefined ? {} : { components: actionRows(s, actions) }),
-        ...(replyTo === undefined ? {} : { reply: { messageReference: replyTo, failIfNotExists: false } })
+        ...(replyTo === undefined ? {} : { reply: { messageReference: replyTo, failIfNotExists: false } }),
+        ...(silent === true ? { flags: MessageFlags.SuppressNotifications } : {})
       }
       const sent = yield* discord("send", async () => (await channel.send(options)).id)
       return { message: MessageId.make(sent) }
@@ -418,7 +420,7 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
       return {}
     }),
 
-  ask: ({ place, text, choices }) =>
+  ask: ({ place, text, choices, silent }) =>
     Effect.gen(function*() {
       const s = yield* current()
       const channel = yield* channelOf(s, place)
@@ -426,6 +428,7 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
         channel.send({
           content: text,
           allowedMentions: { parse: [] },
+          ...(silent === true ? { flags: MessageFlags.SuppressNotifications as const } : {}),
           components: actionRows(s, choices.map((c: Choice) => ({ id: c.id, label: c.label, ...(c.emoji ? { emoji: c.emoji } : {}) })))
         }))
       const byEmoji = new Map<string, string>()

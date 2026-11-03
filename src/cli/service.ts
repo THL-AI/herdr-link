@@ -97,6 +97,11 @@ const launchd = () => {
       rmSync(plist, { force: true })
       return [`removed ${plist}`]
     },
+    restart: () => {
+      const restarted = run("launchctl", ["kickstart", "-k", `${domain}/${label}`])
+      if (!restarted.ok) throw new Error(`launchctl kickstart failed: ${restarted.output.trim()}`)
+      return [`restarted ${label}`]
+    },
     status: () => {
       if (!existsSync(plist)) return { installed: false, running: false, details: "not installed" }
       const info = run("launchctl", ["print", `${domain}/${label}`]).output
@@ -132,6 +137,11 @@ const systemd = () => {
       rmSync(unit, { force: true })
       systemctl("daemon-reload")
       return [`removed ${unit}`]
+    },
+    restart: () => {
+      const restarted = systemctl("restart", unitName)
+      if (!restarted.ok) throw new Error(`systemctl --user restart failed: ${restarted.output.trim()}`)
+      return [`restarted ${unitName}`]
     },
     status: () => {
       if (!existsSync(unit)) return { installed: false, running: false, details: "not installed" }

@@ -13,6 +13,9 @@ herdr-core and, after asking, installs herdr itself with its official script.
 For a missing config or a broken token it runs `herdr-link init`. Add `--yes`
 to skip the questions.
 
+`herdr-link status` says what the running bridge reports: connected chat apps
+or their last error, the hooks, the desk switch.
+
 Logs: `herdr-link service logs` (macOS: `~/Library/Logs/herdr-link.log`, Linux:
 `journalctl --user -u herdr-link`).
 

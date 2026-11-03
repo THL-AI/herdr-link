@@ -99,6 +99,28 @@ const latestNote = (path) => {
   return undefined
 }
 
+/** The questions of Claude Code's AskUserQuestion, so the chat can show them with buttons. */
+const askedQuestions = (input) => {
+  const toolInput = input.tool_input ?? input.toolInput
+  const questions = Array.isArray(toolInput?.questions) ? toolInput.questions : []
+  const clean = questions.flatMap((q) => {
+    const options = (Array.isArray(q?.options) ? q.options : []).flatMap((o) =>
+      typeof o?.label === "string" && o.label !== ""
+        ? [{ label: o.label.slice(0, 200), ...(typeof o.description === "string" ? { description: o.description.slice(0, 500) } : {}) }]
+        : []
+    )
+    return typeof q?.question === "string" && options.length > 0
+      ? [{
+        question: q.question.slice(0, 1000),
+        ...(typeof q.header === "string" ? { header: q.header.slice(0, 100) } : {}),
+        multiSelect: q.multiSelect === true,
+        options
+      }]
+      : []
+  })
+  return clean.length === 0 ? undefined : clean
+}
+
 const send = (message, timeout) => {
   const client = connect(socket)
   const done = () => process.exit(0)
@@ -120,8 +142,15 @@ const main = () => {
   if (event === "PreToolUse") {
     const transcript = field(input, "transcript_path", "transcriptPath")
     const note = transcript ? latestNote(transcript) : undefined
+    const questions = field(input, "tool_name", "toolName") === "AskUserQuestion" ? askedQuestions(input) : undefined
+    if (note === undefined && questions === undefined) return
     // Runs before every tool call: give up fast rather than slow the agent down.
-    if (note !== undefined) send({ terminal, event, text: note.slice(0, 2000) }, 500)
+    send({
+      terminal,
+      event,
+      ...(note === undefined ? {} : { text: note.slice(0, 2000) }),
+      ...(questions === undefined ? {} : { questions })
+    }, 500)
     return
   }
 

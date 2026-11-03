@@ -60,6 +60,7 @@ const setupWith = (
     readonly progressEvery?: Duration.Input
     readonly withoutDashboard?: ReadonlyArray<string>
     readonly machine?: string
+    readonly atDesk?: () => boolean
   } = {}
 ) => Effect.gen(function*() {
   const docs = new Map<string, { value: unknown; version: number }>([["herdr-app", { value: layout, version: 1 }]])
@@ -97,6 +98,7 @@ const setupWith = (
 
   const chat = {
     connected: Effect.succeed([]),
+    states: Effect.succeed([]),
     call: (_adapter: string, method: string, params: any) =>
       Queue.offer(calls, { method, params }).pipe(Effect.as(
         method === "room.ensure"
@@ -183,10 +185,10 @@ describe("Bridge", () => {
       yield* Queue.offer(coreEvents, status(2, "working"))
       yield* Queue.offer(coreEvents, status(3, "done", { msg: "tests pass" }))
       yield* Queue.offer(coreEvents, status(4, "done", { msg: "again" }))
-      yield* Queue.offer(coreEvents, status(5, "blocked", { kind: "question", msg: "Which database?" }))
+      yield* Queue.offer(coreEvents, status(5, "blocked", { kind: "auth", msg: "Sign in to Grok" }))
 
       // `blocked` goes out at once; `done` waits for a hook reply first.
-      assert.strictEqual((yield* take).params.text, "⚠️ Needs you (question): Which database?")
+      assert.strictEqual((yield* take).params.text, "⚠️ Needs you (auth): Sign in to Grok")
       yield* TestClock.adjust("5 seconds")
       const done = yield* take
       assert.deepStrictEqual(done, {
@@ -195,6 +197,29 @@ describe("Bridge", () => {
       })
       yield* TestClock.adjust("5 seconds")
       assert.strictEqual(yield* Queue.size(calls), 0)
+    }))
+
+  it.effect("posts without a push while the owner is at the desk", () =>
+    Effect.gen(function*() {
+      let desk = true
+      const { coreEvents, chatEvents, take } = yield* setupWith({ atDesk: () => desk })
+      yield* Queue.offer(coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+      yield* Queue.offer(chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      const sync = yield* Effect.all([take, take, take])
+      assert.isTrue(sync.every((call) => call.params.silent === undefined)) // only posts and questions
+
+      const blocked = (seq: number): CoreEvent => ({
+        _tag: "status",
+        seq,
+        address: "t1",
+        status: { state: "blocked", app: "claude-code", kind: "auth", msg: "Sign in" }
+      })
+      yield* Queue.offer(coreEvents, blocked(2))
+      assert.strictEqual((yield* take).params.silent, true)
+      desk = false
+      yield* Queue.offer(coreEvents, { _tag: "status", seq: 3, address: "t1", status: { state: "working", app: "claude-code" } })
+      yield* Queue.offer(coreEvents, blocked(4))
+      assert.strictEqual((yield* take).params.silent, undefined)
     }))
 
   it.effect("posts the hook's reply instead of a bare Done, split to the adapter's limit", () =>
@@ -384,6 +409,126 @@ describe("permission prompts", () => {
       assert.strictEqual(edited.method, "message.edit")
       assert.strictEqual(edited.params.text, "🔐 Permission: approve Edit: src/a.ts\n→ answered in herdr")
       assert.deepStrictEqual(edited.params.actions, [])
+    }))
+})
+
+describe("question forms", () => {
+  const thread = { kind: "thread", thread: ThreadId.make("thread-✳️main") } as const
+  const connect = (env: Effect.Success<typeof setup>) =>
+    Effect.gen(function*() {
+      yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+      yield* Queue.offer(env.chatEvents, { _tag: "adapter.connected", adapter: "discord", info: { name: "d", version: "0" }, capabilities })
+      yield* Effect.all([env.take, env.take, env.take])
+    })
+  const color = { question: "Pick a color", header: "Color", multiSelect: false, options: [{ label: "Red" }, { label: "Green", description: "calm" }] } as const
+  const pets = { question: "Pick pets", header: "Pets", multiSelect: true, options: [{ label: "Cat" }, { label: "Dog" }, { label: "Fish" }] } as const
+  const ask = (env: Effect.Success<typeof setup>, questions: ReadonlyArray<any>) =>
+    Queue.offer(env.hooks, { terminal: "t1", event: "PreToolUse", questions } as any)
+  const onScreen = (seq: number): CoreEvent => ({
+    _tag: "status",
+    seq,
+    address: "t1",
+    status: { state: "blocked", kind: "question", msg: "answer: Pick a color?", app: "claude-code" }
+  })
+  const pressed = (action: string): ChatEvent => ({
+    _tag: "action.pressed",
+    adapter: "discord",
+    params: { place: thread, message: MessageId.make("m1"), action: ActionId.make(action) }
+  })
+  const keys = (env: Effect.Success<typeof setup>) => Queue.take(env.coreCalls).pipe(Effect.map((call) => call.params.keys ?? call.params))
+
+  it.effect("posts a question with its options as buttons; a press types the option's digit", () =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* connect(env)
+      yield* ask(env, [color])
+      yield* Queue.offer(env.coreEvents, onScreen(2))
+      const posted = yield* env.take
+      assert.strictEqual(posted.method, "message.post")
+      assert.strictEqual(
+        posted.params.text,
+        "❓ Question · Color\nPick a color\n\n1. **Red**\n2. **Green** — calm\n\n-# Tap one, or write your own answer here."
+      )
+      assert.deepStrictEqual(posted.params.actions.map((a: any) => [a.id, a.label]), [["q:1:0:0", "Red"], ["q:1:0:1", "Green"]])
+
+      yield* Queue.offer(env.chatEvents, pressed("q:1:0:1"))
+      const edited = yield* env.take
+      assert.strictEqual(edited.params.text, "❓ Question · Color\nPick a color\n\n1. **Red**\n2. **Green** — calm\n→ Green")
+      assert.deepStrictEqual(edited.params.actions, [])
+      assert.deepStrictEqual(yield* keys(env), ["2"])
+      // One single-select question: the digit submits it; nothing else is typed.
+      yield* TestClock.adjust("2 seconds")
+      assert.strictEqual(yield* Queue.size(env.coreCalls), 0)
+    }))
+
+  it.effect("walks a form of several questions, toggles a multi select, then submits", () =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* connect(env)
+      yield* ask(env, [color, pets])
+      yield* Queue.offer(env.coreEvents, onScreen(2))
+      assert.include((yield* env.take).params.text, "❓ Question 1/2 · Color")
+      yield* Queue.offer(env.chatEvents, pressed("q:1:0:0"))
+      yield* env.take // the answered question
+      assert.deepStrictEqual(yield* keys(env), ["1"])
+      const second = yield* env.take
+      assert.include(second.params.text, "❓ Question 2/2 · Pets")
+      assert.deepStrictEqual(second.params.actions.map((a: any) => a.label), ["Cat", "Dog", "Fish", "Submit ➡"])
+
+      yield* Queue.offer(env.chatEvents, pressed("q:1:1:2"))
+      assert.deepStrictEqual(yield* keys(env), ["3"])
+      assert.deepStrictEqual((yield* env.take).params.actions.map((a: any) => a.label), ["Cat", "Dog", "✓ Fish", "Submit ➡"])
+      yield* Queue.offer(env.chatEvents, pressed("q:1:1:0"))
+      yield* keys(env)
+      yield* env.take
+      yield* Queue.offer(env.chatEvents, pressed("q:1:1:next"))
+      assert.include((yield* env.take).params.text, "→ Cat, Fish")
+      assert.deepStrictEqual(yield* keys(env), ["tab"])
+      yield* TestClock.adjust("1 second")
+      assert.deepStrictEqual(yield* keys(env), ["1"]) // the review screen's Submit
+    }))
+
+  it.effect("takes the owner's own words: Type something, then the text", () =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* connect(env)
+      yield* ask(env, [color])
+      yield* Queue.offer(env.coreEvents, onScreen(2))
+      yield* env.take
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "message.received",
+        adapter: "discord",
+        params: { place: thread, message: MessageId.make("m9"), text: "whatever you recommend", attachments: [] }
+      })
+      assert.include((yield* env.take).params.text, "→ whatever you recommend")
+      assert.deepStrictEqual(yield* keys(env), ["3"])
+      yield* TestClock.adjust("1 second")
+      assert.deepStrictEqual(yield* Queue.take(env.coreCalls), {
+        method: "terminal.send",
+        params: { terminal: "t1", text: "whatever you recommend", force: true }
+      })
+    }))
+
+  it.effect("waits a moment for the hook's copy; without one it posts the plain status", () =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* connect(env)
+      // The status first, the hook a moment later: still a form.
+      yield* Queue.offer(env.coreEvents, onScreen(2))
+      yield* Effect.yieldNow
+      yield* ask(env, [color])
+      assert.include((yield* env.take).params.text, "❓ Question · Color")
+      yield* TestClock.adjust("2 seconds")
+      // Answered in herdr: the buttons go.
+      yield* Queue.offer(env.coreEvents, { _tag: "status", seq: 3, address: "t1", status: { state: "working", app: "claude-code" } })
+      const closed = yield* env.take
+      assert.include(closed.params.text, "→ answered in herdr")
+      assert.deepStrictEqual(closed.params.actions, [])
+
+      // No hook copy at all (another agent): the plain status after the grace.
+      yield* Queue.offer(env.coreEvents, onScreen(4))
+      for (let i = 0; i < 4; i++) yield* TestClock.adjust("500 millis")
+      assert.strictEqual((yield* env.take).params.text, "⚠️ Needs you (question): answer: Pick a color?")
     }))
 })
 

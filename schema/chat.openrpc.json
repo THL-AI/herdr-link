@@ -277,6 +277,14 @@
           "schema": {
             "$ref": "#/components/schemas/MessageId"
           }
+        },
+        {
+          "name": "silent",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "description": "true: deliver without a push notification (the owner is at the computer). Adapters that cannot post silently post normally."
+          }
         }
       ],
       "result": {
@@ -427,6 +435,14 @@
             "items": {
               "$ref": "#/components/schemas/Choice"
             }
+          }
+        },
+        {
+          "name": "silent",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "description": "true: deliver without a push notification (the owner is at the computer). Adapters that cannot post silently post normally."
           }
         }
       ],

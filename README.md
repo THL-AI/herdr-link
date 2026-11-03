@@ -36,6 +36,7 @@ for anything else.
 | the agent works on a long turn | one status message, edited live: time spent and its latest notes |
 | the agent finishes / needs you | "✅ Done" / "⚠️ Needs you" |
 | a permission prompt | 🔐 with Allow, Allow always, Deny |
+| a question form (Claude Code's AskUserQuestion) | each question with its options as buttons; or write your own answer |
 | a tab or space closed | its thread moves to `📦 archive`, deleted after 7 days |
 
 | In the chat | In herdr |
@@ -45,6 +46,11 @@ for anything else.
 | a deleted thread | its tab is closed |
 | a task in your private chat with the bot | a new tab in the space you pick, the task as its first message |
 | `/screen`, `/status`, `/space new` | the agent's screen, every agent's state, a new space |
+
+At the computer, a small herdr-link bar in the Herdr window (`herdr-link mod
+install`) says whether the link works and switches between **at the desk**
+(messages still arrive, without a push) and **away** (every message pushes to
+your phone); click it for the basic settings.
 
 Agents are configuration, not code: Claude Code and Grok are set up out of the
 box (their Allow / Deny keys are verified against the real apps), and any
