@@ -37,7 +37,8 @@ const fakeAdapter = (transport: Transport.Transport, posted: Queue.Queue<string>
       react: () => Effect.die("boom"),
       ask: notImplemented,
       "thread.delete": notImplemented,
-      "room.delete": notImplemented
+      "room.delete": notImplemented,
+      "thread.status": () => Effect.void
     })
   })
 
@@ -52,6 +53,7 @@ const bridge = (
     handlers: (peer) => ({
       "thread.created": ({ name }) => Queue.offer(received, `created ${name}`),
       "thread.deleted": () => Effect.void,
+      "room.deleted": () => Effect.void,
       // Calls back into the adapter from inside a handler: must not deadlock.
       "message.received": ({ text, place }) =>
         Queue.offer(received, `got ${text}`).pipe(
@@ -61,7 +63,8 @@ const bridge = (
         ),
       "reaction.added": () => Effect.void,
       "action.pressed": () => Effect.void,
-      "command.invoked": ({ command }) => Effect.succeed({ text: `ran ${command}` })
+      "command.invoked": ({ command }) => Effect.succeed({ text: `ran ${command}` }),
+      "space.create": () => Effect.succeed({})
     })
   })
 

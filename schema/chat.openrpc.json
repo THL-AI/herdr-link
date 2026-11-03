@@ -463,8 +463,60 @@
       }
     },
     {
+      "name": "thread.status",
+      "description": "An agent in this thread's tab changed state. Sent only to adapters whose capabilities say `status`. A split tab has several terminals, each reported on its own.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/bridge-to-adapter"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "thread",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        },
+        {
+          "name": "terminal",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The herdr terminal (one pane of the tab)."
+          }
+        },
+        {
+          "name": "state",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "working, blocked (waiting for the owner), done (finished its turn), idle, error, or gone (the terminal ended)."
+          }
+        },
+        {
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "With blocked: what it waits for (permission, question, auth…)."
+          }
+        },
+        {
+          "name": "text",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "The agent's own status line, if any."
+          }
+        }
+      ]
+    },
+    {
       "name": "thread.created",
-      "description": "The owner created a thread. The bridge ignores threads outside rooms it ensured.",
+      "description": "The owner created a thread: the bridge opens a tab for it in the room's space. The bridge ignores threads outside rooms it ensured.",
       "tags": [
         {
           "$ref": "#/components/tags/adapter-to-bridge"
@@ -490,7 +542,44 @@
           "name": "name",
           "required": true,
           "schema": {
-            "type": "string"
+            "type": "string",
+            "description": "Without `agent`, a leading agent emoji picks the agent (else the bridge asks); without rooms, `space / tab` names the space."
+          }
+        },
+        {
+          "name": "agent",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A configured agent's name (claude, grok…): the tab starts at once with it, named `name`."
+          }
+        },
+        {
+          "name": "task",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "The agent's first message. Without it, messages written in the thread before the tab starts become the task."
+          }
+        }
+      ]
+    },
+    {
+      "name": "room.deleted",
+      "description": "The owner deleted a room the bridge ensured: its space is closed in herdr, with every tab in it. The adapter does not report its own room.delete.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/adapter-to-bridge"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "room",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/RoomId"
           }
         }
       ]
@@ -679,6 +768,76 @@
           "additionalProperties": true
         }
       }
+    },
+    {
+      "name": "space.create",
+      "description": "Make a herdr space, optionally with a first tab running an agent on a task. Answers once the space exists, with its room (adapters with rooms) and the first tab's thread, already linked: the sync reuses them. InvalidParams for an unknown agent, InternalError when herdr refuses.",
+      "tags": [
+        {
+          "$ref": "#/components/tags/adapter-to-bridge"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "name": "folder",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Where its terminals start; `~` is the home folder."
+          }
+        },
+        {
+          "name": "agent",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A configured agent's name."
+          }
+        },
+        {
+          "name": "tab",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The first tab's name (with `agent`; default: the agent's name)."
+          }
+        },
+        {
+          "name": "task",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "The agent's first message."
+          }
+        }
+      ],
+      "result": {
+        "name": "space.create.result",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": {
+              "$ref": "#/components/schemas/RoomId"
+            },
+            "thread": {
+              "$ref": "#/components/schemas/ThreadId"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
     }
   ],
   "components": {
@@ -821,6 +980,10 @@
             "minimum": 0,
             "maximum": 9007199254740991,
             "description": "Most actions or choices on one message."
+          },
+          "status": {
+            "type": "boolean",
+            "description": "Send thread.status: every agent's state as data, for an adapter that acts on it (a program driving agents, a status icon). Chat apps leave it out; their messages already say it."
           }
         },
         "required": [

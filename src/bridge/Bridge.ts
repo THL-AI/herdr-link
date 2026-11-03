@@ -39,7 +39,8 @@ import * as Spaces from "../core/Spaces.ts"
 import type { Action, Capabilities, Place } from "../protocol/Chat.ts"
 import { ActionId, MessageId, RoomId, ThreadId } from "../protocol/Chat.ts"
 import { ErrorCode } from "../protocol/JsonRpc.ts"
-import type { AdapterToBridge, Params } from "../protocol/Methods.ts"
+import type { AdapterToBridge, Params, Result } from "../protocol/Methods.ts"
+import { RpcError } from "../protocol/Peer.ts"
 import type { HookMessage, Question } from "./Hooks.ts"
 import * as Questions from "./Questions.ts"
 import * as Store from "./Store.ts"
@@ -858,9 +859,19 @@ export const run = Effect.fnUntraced(function*(options: {
     return task === "" ? undefined : task
   }
 
-  /** A new thread in a known space: a leading agent emoji picks the agent, else ask. */
-  const openTabFor = (adapter: string, spaceId: string, thread: string, name: string) =>
+  /**
+   * A new thread in a known space: the adapter's `agent` starts at once; else a
+   * leading agent emoji picks the agent, else ask.
+   */
+  const openTabFor = (adapter: string, spaceId: string, thread: string, name: string, agent?: string) =>
     Effect.gen(function*() {
+      if (agent !== undefined) {
+        if (agents[agent] !== undefined) return yield* startTab(adapter, spaceId, thread, agent, name)
+        return yield* chat.call(adapter, "message.post", {
+          place: { kind: "thread", thread: ThreadId.make(thread) },
+          text: `⚠️ No agent named ${agent} here; the agents are ${Object.keys(agents).join(", ")}.`
+        }).pipe(Effect.asVoid)
+      }
       const found = agentFromName(name)
       if (found !== undefined) {
         // Started a moment later, so a message that comes with the thread is its task.
@@ -914,19 +925,24 @@ export const run = Effect.fnUntraced(function*(options: {
       const mine = s.state().adapters[adapter]
       if (mine === undefined) return
       if (Object.values(mine.threads).some((entry) => entry.thread === params.thread)) return // ours
-      const collect = () => firstMessages.set(threadKey(adapter, params.thread), [])
+      // The adapter's task first, then whatever is written before the tab starts.
+      const collect = () =>
+        firstMessages.set(threadKey(adapter, params.thread), params.task === undefined ? [] : [params.task])
       if (params.room !== undefined) {
         const spaceId = Object.entries(mine.rooms).find(([, room]) => room === params.room)?.[0]
         if (spaceId === undefined) return // not in one of our rooms: the owner's own channels
         collect()
-        return yield* openTabFor(adapter, spaceId, params.thread, params.name)
+        return yield* openTabFor(adapter, spaceId, params.thread, params.name, params.agent)
       }
       // A thread outside rooms means something only to an adapter without rooms.
       const capabilities = adapters.get(adapter)
       if (capabilities === undefined || capabilities.rooms) return
       collect()
       const named = spaceFromName(params.name)
-      if (named !== undefined) return yield* openTabFor(adapter, named.space.id, params.thread, named.name)
+      if (named !== undefined) {
+        const tab = params.agent === undefined ? named.name : agentFromName(named.name)?.rest || named.name
+        return yield* openTabFor(adapter, named.space.id, params.thread, tab, params.agent)
+      }
       if (spaces.length === 0) return
       const id = nextPending++
       pendingSpaces.set(id, { adapter, thread: params.thread, name: params.name })
@@ -969,6 +985,119 @@ export const run = Effect.fnUntraced(function*(options: {
       yield* edit(`Who works here? → ${agents[agentName]!.emoji} ${agentName}`)
       yield* startTab(pending.adapter, pending.spaceId, pending.thread, agentName, pending.name)
     })
+
+  // Spaces made and closed from an adapter.
+
+  /** An adapter's space.create: the space, its room and first thread linked before the layout change lands. */
+  const createSpace = (adapter: string, params: Params<AdapterToBridge["space.create"]>) =>
+    Effect.gen(function*() {
+      const agent = params.agent === undefined ? undefined : agents[params.agent]
+      if (params.agent !== undefined && agent === undefined) {
+        return yield* new RpcError({
+          code: ErrorCode.InvalidParams,
+          message: `no agent named ${params.agent}; the agents are ${Object.keys(agents).join(", ")}`
+        })
+      }
+      const folder = params.folder.trim().replace(/^~(?=\/|$)/, process.env.HOME ?? "~")
+      const tabName = params.tab ?? params.agent
+      const task = agent === undefined ? undefined : params.task
+      const created = yield* options.app.newSpace({
+        name: params.name,
+        folder,
+        ...(tabName === undefined ? {} : { tab: tabName }),
+        ...(agent === undefined ? {} : { argv: agentArgv(agent) }),
+        ...(task === undefined || task === "" ? {} : { task })
+      }).pipe(Effect.mapError((error) => new RpcError({ code: ErrorCode.InternalError, message: error.message })))
+
+      const withRooms = adapters.get(adapter)?.rooms === true
+      const space: Spaces.Space = { id: created.space, name: params.name, folder, tabs: [] }
+      const room = withRooms ? (yield* chat.call(adapter, "room.ensure", { name: roomName(space) })).room : undefined
+      const thread = created.tab === undefined || tabName === undefined
+        ? undefined // a tab Herdr names itself: the sync makes its thread
+        : (yield* chat.call(adapter, "thread.ensure", {
+          ...(room === undefined ? {} : { room }),
+          name: withRooms ? `${agent?.emoji ?? ""}${tabName}` : `${agent?.emoji ?? ""}${roomName(space)} / ${tabName}`,
+          topic: `${roomName(space)} / ${tabName} — ${folder}`
+        })).thread
+      const s = yield* loadStore
+      const state = s.state()
+      const mine = state.adapters[adapter] ?? Store.emptyAdapter
+      const threadEntry = thread === undefined
+        ? undefined
+        : agent === undefined
+        ? { thread }
+        : { thread, emoji: agent.emoji }
+      yield* s.save({
+        adapters: {
+          ...state.adapters,
+          [adapter]: {
+            ...mine,
+            rooms: room === undefined ? mine.rooms : { ...mine.rooms, [created.space]: room },
+            threads: threadEntry === undefined || created.tab === undefined
+              ? mine.threads
+              : { ...mine.threads, [created.tab]: threadEntry }
+          }
+        }
+      })
+      yield* Effect.logInfo(`${adapter}: made space ${params.name} in ${folder}`)
+      const result: Result<AdapterToBridge["space.create"]> = {
+        ...(room === undefined ? {} : { room }),
+        ...(thread === undefined ? {} : { thread })
+      }
+      return result
+    }).pipe(
+      Effect.mapError((error) =>
+        error instanceof RpcError ? error : new RpcError({ code: ErrorCode.InternalError, message: error.message })
+      )
+    )
+
+  /** The owner deleted a room: its space is closed in herdr, and the sync archives its threads. */
+  const roomDeleted = (adapter: string, room: string) =>
+    Effect.gen(function*() {
+      const s = yield* loadStore
+      const mine = s.state().adapters[adapter]
+      const spaceId = Object.entries(mine?.rooms ?? {}).find(([, id]) => id === room)?.[0]
+      if (spaceId === undefined) return // the archive, or a room not ours
+      const space = spaces.find((sp) => sp.id === spaceId)
+      yield* Effect.logInfo(`${adapter}: room of space ${space?.name ?? spaceId} deleted; closing the space`)
+      // On failure the space stays, and the next sync makes its room again.
+      yield* options.app.closeSpace(spaceId).pipe(
+        Effect.catch((error) => Effect.logWarning(`cannot close space ${spaceId} in herdr-app: ${error.message}`))
+      )
+    }).pipe(Effect.catch((error) => Effect.logWarning(`cannot handle a deleted room: ${error.message}`)))
+
+  // Agents' states as data, for adapters that ask for them (capabilities.status).
+
+  const notifyStatus = (address: string, state: string, status?: Terminal["status"], only?: string) =>
+    Effect.gen(function*() {
+      const tab = tabOf(address)
+      if (tab === undefined) return
+      const s = yield* loadStore
+      for (const [adapter, capabilities] of adapters) {
+        if (capabilities.status !== true || (only !== undefined && adapter !== only)) continue
+        const entry = s.state().adapters[adapter]?.threads[tab.id]
+        if (entry === undefined) continue
+        yield* chat.notify(adapter, "thread.status", {
+          thread: ThreadId.make(entry.thread),
+          terminal: address,
+          state,
+          ...(status?.kind == null ? {} : { kind: status.kind }),
+          ...(status?.msg === undefined || status.msg === "" ? {} : { text: status.msg })
+        })
+      }
+    }).pipe(Effect.catch((error) => Effect.logWarning(`cannot send a status: ${error.message}`)))
+
+  /** Every agent's current state, to an adapter that just connected. */
+  const notifyAllStatuses = (adapter: string) =>
+    Effect.suspend(() =>
+      adapters.get(adapter)?.status !== true
+        ? Effect.void
+        : Effect.forEach(
+          [...terminals.values()].filter((t) => t.state === "live" && t.status != null),
+          (t) => notifyStatus(t.address, t.status!.state, t.status, adapter),
+          { discard: true }
+        )
+    )
 
   // Commands.
 
@@ -1304,6 +1433,7 @@ export const run = Effect.fnUntraced(function*(options: {
             if (entry !== undefined) entry.waiting = true
           } else if (state !== undefined) yield* finishProgress(event.address, state)
           if (state === undefined || state === before) return
+          yield* notifyStatus(event.address, state, event.status)
           if (state === "blocked" && event.status?.kind === "permission") {
             return yield* openPrompt(event.address, event.status)
           }
@@ -1342,6 +1472,7 @@ export const run = Effect.fnUntraced(function*(options: {
         })
       case "removed":
         return Effect.gen(function*() {
+          if (terminals.get(event.address)?.state === "live") yield* notifyStatus(event.address, "gone")
           terminals.delete(event.address)
           yield* finishProgress(event.address, "gone")
           const open = prompts.get(event.address)
@@ -1360,6 +1491,7 @@ export const run = Effect.fnUntraced(function*(options: {
       case "adapter.connected":
         return Effect.sync(() => adapters.set(event.adapter, event.capabilities)).pipe(
           Effect.andThen(syncAdapter(event.adapter)),
+          Effect.andThen(notifyAllStatuses(event.adapter)),
           Effect.andThen(markDirty)
         )
       case "adapter.disconnected":
@@ -1368,6 +1500,13 @@ export const run = Effect.fnUntraced(function*(options: {
         return runCommand(event.adapter, event.params).pipe(
           Effect.flatMap((text) => Deferred.succeed(event.reply, { text }))
         )
+      case "space.create":
+        return createSpace(event.adapter, event.params).pipe(
+          Effect.exit,
+          Effect.flatMap((exit) => Deferred.done(event.reply, exit))
+        )
+      case "room.deleted":
+        return roomDeleted(event.adapter, event.params.room)
       case "thread.created":
         return threadCreated(event.adapter, event.params)
       case "message.received":

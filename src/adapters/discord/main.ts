@@ -381,6 +381,8 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
   "thread.delete": ({ thread }) => deleteChannel(thread, ChannelType.GuildText),
 
   "room.delete": ({ room }) => deleteChannel(room, ChannelType.GuildCategory),
+  // A chat app shows its messages; the agents' states as data are for programs.
+  "thread.status": () => Effect.void,
 
   "message.post": ({ place, text, files, actions, replyTo, silent }) =>
     Effect.gen(function*() {
@@ -558,9 +560,14 @@ const run = Effect.gen(function*() {
 
   client.on(Events.ChannelDelete, (channel) => {
     if (session === undefined || channel.isDMBased() || channel.guildId !== session.guild.id) return
-    if (channel.type !== ChannelType.GuildText) return
-    if (deleting.delete(channel.id)) return // our own thread.delete
-    send(peer.notify("thread.deleted", { thread: ThreadId.make(channel.id) }))
+    if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildCategory) return
+    if (deleting.delete(channel.id)) return // our own thread.delete or room.delete
+    // A category goes alone: its channels stay, without one (the bridge archives them once the space is closed).
+    send(
+      channel.type === ChannelType.GuildCategory
+        ? peer.notify("room.deleted", { room: RoomId.make(channel.id) })
+        : peer.notify("thread.deleted", { thread: ThreadId.make(channel.id) })
+    )
   })
 
   const closed = yield* peer.closed

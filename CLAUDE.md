@@ -194,9 +194,19 @@ notifications; stderr is the adapter's log. Exported for adapter authors as
   `thread.delete`, `message.post` (text, files, actions), `message.edit`,
   `react`, `ask` (returns at once; the answer comes as `action.pressed`,
   button or reaction).
-- Adapter → bridge: `thread.created`, `thread.deleted`, `message.received`,
-  `reaction.added`, `action.pressed` (notifications), `command.invoked`
-  (request; the result is the reply).
+- Adapter → bridge: `thread.created` (`agent?`, `task?`: a program starts a
+  tab at once), `thread.deleted`, `room.deleted` (closes the space),
+  `message.received`, `reaction.added`, `action.pressed` (notifications),
+  `command.invoked` (request; the result is the reply), `space.create`
+  (request: the space, its room and first thread linked before the layout
+  change lands, like `startTab`).
+- Bridge → adapter notification `thread.status` (`thread`, `terminal`,
+  `state`, `kind?`, `text?`), only with `capabilities.status`: on every state
+  change, `gone` when a live terminal is removed, and every agent's state
+  right after `hello`.
+- Not every adapter is a chat app: a program with its own interface (a
+  pipeline, a board) is an adapter that drives agents through the same
+  protocol.
 - A message lives in a `Place`: a thread, or `direct` (the owner's DM). Ids are
   opaque strings the bridge stores and never parses. The bridge splits text at
   `capabilities.maxText`. The adapter authenticates its senders (owner check);

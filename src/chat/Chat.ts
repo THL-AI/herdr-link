@@ -24,6 +24,14 @@ export interface CommandEvent {
   readonly reply: Deferred.Deferred<Result<AdapterToBridge["command.invoked"]>, RpcError>
 }
 
+/** An adapter asks for a new space; the bridge answers through `reply`. */
+export interface SpaceCreateEvent {
+  readonly _tag: "space.create"
+  readonly adapter: string
+  readonly params: Params<AdapterToBridge["space.create"]>
+  readonly reply: Deferred.Deferred<Result<AdapterToBridge["space.create"]>, RpcError>
+}
+
 /** An adapter finished `hello` (first start or restart): time to sync its rooms. */
 export interface AdapterConnected {
   readonly _tag: "adapter.connected"
@@ -38,7 +46,7 @@ export interface AdapterDisconnected {
   readonly reason: string
 }
 
-export type ChatEvent = OwnerEvent | CommandEvent | AdapterConnected | AdapterDisconnected
+export type ChatEvent = OwnerEvent | CommandEvent | SpaceCreateEvent | AdapterConnected | AdapterDisconnected
 
 export interface ConnectedAdapter {
   readonly name: string
@@ -70,6 +78,12 @@ export class Chat extends Context.Service<Chat, {
     method: K,
     params: Params<BridgeToAdapter[K]>
   ) => Effect.Effect<Result<BridgeToAdapter[K]>, ChatError>
+  /** A notification: no answer; nothing happens when the adapter is not connected. */
+  readonly notify: <K extends NotificationName<BridgeToAdapter>>(
+    adapter: string,
+    method: K,
+    params: Params<BridgeToAdapter[K]>
+  ) => Effect.Effect<void>
   /** Single consumer: the bridge core. */
   readonly events: Stream.Stream<ChatEvent>
 }>()("herdr-link/chat/Chat") {}

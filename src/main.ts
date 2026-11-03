@@ -79,7 +79,8 @@ const run = (hooks: Stream.Stream<Hooks.HookMessage>, configPath: string) => Eff
     app: {
       closeTab: (id) => HerdrApp.closeTab(id).pipe(withSpawner),
       newTab: (tab) => HerdrApp.newTab(tab).pipe(withSpawner),
-      newSpace: (space) => HerdrApp.newSpace(space).pipe(withSpawner)
+      newSpace: (space) => HerdrApp.newSpace(space).pipe(withSpawner),
+      closeSpace: (id) => HerdrApp.closeSpace(id).pipe(withSpawner)
     }
   })
 })

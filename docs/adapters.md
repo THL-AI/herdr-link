@@ -84,10 +84,12 @@ The machine-readable reference is [`schema/chat.openrpc.json`](../schema/chat.op
 | `files` | attachments are neither sent nor received |
 | `maxText` | the bridge splits longer text into several messages |
 | `maxActions` | the most buttons the bridge puts under one message |
+| `status` (optional) | no `thread.status` notifications (chat apps don't need them: their messages say it) |
 
 ## Bridge → adapter
 
-All of these are requests: answer each with a result or an error.
+All of these but `thread.status` are requests: answer each with a result or
+an error.
 
 | method | params | result | what to do |
 | --- | --- | --- | --- |
@@ -99,6 +101,12 @@ All of these are requests: answer each with a result or an error.
 | `message.edit` | `place`, `message`, `text?`, `actions?` | `{}` | Replace the text and/or the buttons; `actions: []` removes them. |
 | `react` | `place`, `message`, `emoji` | `{}` | Add the bot's reaction. |
 | `ask` | `place`, `text`, `choices`, `silent?` | `message` | Post a question and **return at once**. Report the answer later as `action.pressed` with the choice's id, whether the owner pressed a button or reacted with the choice's emoji. |
+
+One notification, only when your capabilities say `"status": true`:
+
+| method | params | what it says |
+| --- | --- | --- |
+| `thread.status` | `thread`, `terminal`, `state`, `kind?`, `text?` | An agent in this thread's tab changed state: `working`, `blocked` (waiting for the owner; `kind` says for what: `permission`, `question`, `auth`…), `done` (finished its turn), `idle`, `error`, or `gone` (the terminal ended). `text` is the agent's own status line. Right after `hello`, every agent's current state. A split tab has several terminals, each reported on its own. |
 
 An emoji is `{"kind": "unicode", "value": "👀"}` or `{"kind": "custom", "name": "claude"}`
 (a custom emoji you know by name, such as an agent's logo).
@@ -117,9 +125,11 @@ Report only what **the owner** did. Notifications are handled in order.
 | `message.received` | notification | `place`, `message`, `text`, `attachments`, `replyTo?` |
 | `action.pressed` | notification | `place`, `message`, `action` (the id the bridge gave the button or choice) |
 | `reaction.added` | notification | `place`, `message`, `emoji` |
-| `thread.created` | notification | `room?`, `thread`, `name` |
+| `thread.created` | notification | `room?`, `thread`, `name`, `agent?`, `task?` |
 | `thread.deleted` | notification | `thread` |
+| `room.deleted` | notification | `room` |
 | `command.invoked` | **request** | `place`, `command`, `args` → result `{"text": "…"}`: show it as the reply |
+| `space.create` | **request** | `name`, `folder`, `agent?`, `tab?`, `task?` → result `{"room?", "thread?"}` |
 
 - `attachments` are `{"name", "url", "size?", "contentType?"}`; the bridge
   downloads `url` and puts the file beside the agent.
@@ -127,6 +137,21 @@ Report only what **the owner** did. Notifications are handled in order.
   `thread.ensure` / `thread.delete` (watch out for platforms that announce a
   new channel before your API call returns). A thread the owner deletes closes
   its tab; a thread the owner creates in one of your rooms opens a new one.
+- A new thread opens a tab in its room's space. Without `agent`, a leading
+  agent emoji in `name` picks the agent (`✳️fix-login`), else the bridge asks
+  "Who works here?"; messages written in the thread before the tab starts
+  become its agent's first message. With `agent` (a configured agent's name,
+  such as `claude`), the tab starts at once, named `name`, and `task` is its
+  first message: what a program that drives agents wants.
+- A room the owner deletes closes its herdr space, with every tab in it.
+  Don't report your own `room.delete`.
+- `space.create` makes a herdr space in `folder` (`~` allowed), with a first
+  tab running `agent` on `task` when given (`tab` names it; default: the
+  agent's name). The answer comes once the space exists: its `room` (if you
+  have rooms) and the first tab's `thread`, already made through your
+  `room.ensure` / `thread.ensure`, so expect those calls before the result.
+  Errors: `-32602` for an unknown agent, `-32603` when herdr refuses (the
+  Herdr app must be running).
 - Acknowledge button presses on your platform yourself (Discord, for example,
   wants an answer within 3 seconds); the bridge does not wait for that.
 - Platforms with short reply deadlines for commands: defer, then send the
@@ -135,6 +160,28 @@ Report only what **the owner** did. Notifications are handled in order.
 ```json
 ← {"jsonrpc":"2.0","method":"message.received","params":{"place":{"kind":"thread","thread":"-1001234567890/45"},"message":"-1001234567890/45/9002","text":"run the tests","attachments":[]}}
 ```
+
+## Driving agents from a program
+
+An adapter needn't be a chat app. A program with its own interface (a
+pipeline that runs every step of a ticket in its own tab, a board, a script)
+is an adapter too: to herdr-link it is a chat that happens to be written by
+code. It can:
+
+1. make a space for a piece of work: `space.create` with the folder and the
+   first step's agent and prompt;
+2. start the next step: `thread.created` in that room, with `agent` and
+   `task`;
+3. follow it: `thread.status` (with `"status": true` in its capabilities)
+   says when the agent works, waits for the owner, or is done; the agent's
+   reply comes as `message.post` in the thread, prompts and questions with
+   their buttons, which it may press (`action.pressed`) or leave to the
+   owner;
+4. talk to it: `message.received` in the thread;
+5. clean up: `thread.deleted` closes a tab, `room.deleted` the whole space.
+
+Run several adapters at once: the owner's Discord shows the same spaces and
+tabs, and can step in from the phone.
 
 ## Errors
 

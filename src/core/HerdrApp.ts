@@ -34,17 +34,25 @@ export const newTab = (options: {
     Effect.mapError((error) => (error instanceof Error ? error : new Error(String(error))))
   )
 
+/** A space, its first tab when `argv` or `tab` is given. */
 export const newSpace = (options: {
   readonly name: string
   readonly folder: string
   readonly tab?: string
   readonly argv?: ReadonlyArray<string>
   readonly task?: string
-}) => run("space.new", options).pipe(Effect.asVoid)
+}) =>
+  run("space.new", options).pipe(
+    Effect.flatMap((output) => Schema.decodeUnknownEffect(Schema.fromJsonString(Created))(output.trim())),
+    Effect.mapError((error) => (error instanceof Error ? error : new Error(String(error))))
+  )
+
+export const closeSpace = (id: string) => run("space.close", { id, confirmed: true }).pipe(Effect.asVoid)
 
 /** What the bridge core needs from the app. */
 export interface HerdrApp {
   readonly closeTab: (id: string) => Effect.Effect<void, Error>
   readonly newTab: (options: Parameters<typeof newTab>[0]) => Effect.Effect<typeof Created.Type, Error>
-  readonly newSpace: (options: Parameters<typeof newSpace>[0]) => Effect.Effect<void, Error>
+  readonly newSpace: (options: Parameters<typeof newSpace>[0]) => Effect.Effect<typeof Created.Type, Error>
+  readonly closeSpace: (id: string) => Effect.Effect<void, Error>
 }

@@ -116,7 +116,11 @@ export const Capabilities = Schema.Struct({
   }),
   maxActions: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).annotate({
     description: "Most actions or choices on one message."
-  })
+  }),
+  status: Schema.optionalKey(Schema.Boolean.annotate({
+    description: "Send thread.status: every agent's state as data, for an adapter that acts on it (a program " +
+      "driving agents, a status icon). Chat apps leave it out; their messages already say it."
+  }))
 }).annotate({ identifier: "Capabilities" })
 export type Capabilities = typeof Capabilities.Type
 

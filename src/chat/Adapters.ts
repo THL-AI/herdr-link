@@ -42,6 +42,7 @@ export const make = Effect.fnUntraced(function*(options: {
     return {
       "thread.created": forward("thread.created"),
       "thread.deleted": forward("thread.deleted"),
+      "room.deleted": forward("room.deleted"),
       "message.received": forward("message.received"),
       "reaction.added": forward("reaction.added"),
       "action.pressed": forward("action.pressed"),
@@ -49,6 +50,18 @@ export const make = Effect.fnUntraced(function*(options: {
         Effect.gen(function*() {
           const reply = yield* Deferred.make<Result<typeof AdapterToBridge["command.invoked"]>, RpcError>()
           yield* Queue.offer(events, { _tag: "command.invoked", adapter, params, reply })
+          return yield* Deferred.await(reply).pipe(
+            Effect.timeoutOrElse({
+              duration: commandTimeout,
+              orElse: () =>
+                Effect.fail(new RpcError({ code: ErrorCode.InternalError, message: "the bridge did not answer" }))
+            })
+          )
+        }),
+      "space.create": (params: Params<typeof AdapterToBridge["space.create"]>) =>
+        Effect.gen(function*() {
+          const reply = yield* Deferred.make<Result<typeof AdapterToBridge["space.create"]>, RpcError>()
+          yield* Queue.offer(events, { _tag: "space.create", adapter, params, reply })
           return yield* Deferred.await(reply).pipe(
             Effect.timeoutOrElse({
               duration: commandTimeout,
@@ -125,6 +138,11 @@ export const make = Effect.fnUntraced(function*(options: {
                 )
             })
           )
+      }),
+    notify: (adapter, method, params) =>
+      Effect.suspend(() => {
+        const connection = connections.get(adapter)
+        return connection === undefined ? Effect.void : connection.peer.notify(method, params).pipe(Effect.ignore)
       }),
     events: Stream.fromQueue(events)
   })

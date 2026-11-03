@@ -135,6 +135,23 @@ export const BridgeToAdapter = {
       silent: Schema.optionalKey(Silent)
     }),
     Schema.Struct({ message: MessageId })
+  ),
+  "thread.status": notification(
+    "thread.status",
+    "An agent in this thread's tab changed state. Sent only to adapters whose capabilities say `status`. A split " +
+      "tab has several terminals, each reported on its own.",
+    Schema.Struct({
+      thread: ThreadId,
+      terminal: Schema.NonEmptyString.annotate({ description: "The herdr terminal (one pane of the tab)." }),
+      state: Schema.String.annotate({
+        description: "working, blocked (waiting for the owner), done (finished its turn), idle, error, or gone " +
+          "(the terminal ended)."
+      }),
+      kind: Schema.optionalKey(Schema.String.annotate({
+        description: "With blocked: what it waits for (permission, question, auth…)."
+      })),
+      text: Schema.optionalKey(Schema.String.annotate({ description: "The agent's own status line, if any." }))
+    })
   )
 } as const
 
@@ -144,12 +161,29 @@ export const BridgeToAdapter = {
 export const AdapterToBridge = {
   "thread.created": notification(
     "thread.created",
-    "The owner created a thread. The bridge ignores threads outside rooms it ensured.",
+    "The owner created a thread: the bridge opens a tab for it in the room's space. The bridge ignores threads " +
+      "outside rooms it ensured.",
     Schema.Struct({
       room: Schema.optionalKey(RoomId),
       thread: ThreadId,
-      name: Schema.String
+      name: Schema.String.annotate({
+        description: "Without `agent`, a leading agent emoji picks the agent (else the bridge asks); without " +
+          "rooms, `space / tab` names the space."
+      }),
+      agent: Schema.optionalKey(Schema.NonEmptyString.annotate({
+        description: "A configured agent's name (claude, grok…): the tab starts at once with it, named `name`."
+      })),
+      task: Schema.optionalKey(Schema.String.annotate({
+        description: "The agent's first message. Without it, messages written in the thread before the tab " +
+          "starts become the task."
+      }))
     })
+  ),
+  "room.deleted": notification(
+    "room.deleted",
+    "The owner deleted a room the bridge ensured: its space is closed in herdr, with every tab in it. The " +
+      "adapter does not report its own room.delete.",
+    Schema.Struct({ room: RoomId })
   ),
   "thread.deleted": notification(
     "thread.deleted",
@@ -187,6 +221,25 @@ export const AdapterToBridge = {
       args: CommandArgs
     }),
     Schema.Struct({ text: Text })
+  ),
+  "space.create": request(
+    "space.create",
+    "Make a herdr space, optionally with a first tab running an agent on a task. Answers once the space exists, " +
+      "with its room (adapters with rooms) and the first tab's thread, already linked: the sync reuses them. " +
+      "InvalidParams for an unknown agent, InternalError when herdr refuses.",
+    Schema.Struct({
+      name: Schema.NonEmptyString,
+      folder: Schema.NonEmptyString.annotate({ description: "Where its terminals start; `~` is the home folder." }),
+      agent: Schema.optionalKey(Schema.NonEmptyString.annotate({ description: "A configured agent's name." })),
+      tab: Schema.optionalKey(Schema.NonEmptyString.annotate({
+        description: "The first tab's name (with `agent`; default: the agent's name)."
+      })),
+      task: Schema.optionalKey(Schema.String.annotate({ description: "The agent's first message." }))
+    }),
+    Schema.Struct({
+      room: Schema.optionalKey(RoomId),
+      thread: Schema.optionalKey(ThreadId)
+    })
   )
 } as const
 

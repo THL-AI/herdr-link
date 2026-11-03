@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest"
-import { Deferred, type Duration, Effect, Queue, Stream } from "effect"
+import { Deferred, type Duration, Effect, Queue, Result, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import * as Store from "../src/bridge/Store.ts"
 import * as Bridge from "../src/bridge/Bridge.ts"
@@ -107,6 +107,7 @@ const setupWith = (
           ? { thread: params.thread ?? ThreadId.make(`thread-${params.name}`), created: params.thread === undefined }
           : { message: "m1" }
       )),
+    notify: (_adapter: string, method: string, params: any) => Queue.offer(calls, { method, params }).pipe(Effect.asVoid),
     events: Stream.fromQueue(chatEvents)
   } as unknown as Chat["Service"]
 
@@ -122,7 +123,11 @@ const setupWith = (
       closeTab: (id) => Queue.offer(closedTabs, id).pipe(Effect.asVoid),
       newTab: (tab) =>
         Queue.offer(appCalls, { method: "tab.new", params: tab }).pipe(Effect.as({ space: tab.space, tab: "tb-new", terminal: "t9" })),
-      newSpace: (space) => Queue.offer(appCalls, { method: "space.new", params: space }).pipe(Effect.asVoid)
+      newSpace: (space) =>
+        Queue.offer(appCalls, { method: "space.new", params: space }).pipe(
+          Effect.as(space.tab === undefined ? { space: "sp-new" } : { space: "sp-new", tab: "tb-first", terminal: "t8" })
+        ),
+      closeSpace: (id) => Queue.offer(appCalls, { method: "space.close", params: { id } }).pipe(Effect.asVoid)
     }
   }).pipe(Effect.forkScoped)
   const take = Queue.take(calls)
@@ -738,6 +743,116 @@ describe("new tabs from the platform and commands", () => {
         method: "space.new",
         params: { name: "web", folder: `${process.env.HOME}/p/web`, tab: "claude", argv: ["claude"], task: "hi" }
       })
+    }))
+})
+
+describe("adapters that drive herdr (protocol for programs)", () => {
+  const start = (extra: Partial<typeof capabilities> & { status?: boolean } = {}) =>
+    Effect.gen(function*() {
+      const env = yield* setup
+      yield* Queue.offer(env.coreEvents, {
+        _tag: "snapshot",
+        seq: 1,
+        terminals: [terminal("t1", { template: "claude", status: { state: "idle", app: "claude-code" } })]
+      })
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "adapter.connected",
+        adapter: "pipe",
+        info: { name: "pipe", version: "0" },
+        capabilities: { ...capabilities, ...extra }
+      })
+      yield* Effect.all([env.take, env.take, env.take])
+      yield* Effect.yieldNow
+      return env
+    })
+
+  it.effect("opens a tab at once with the adapter's agent and task", () =>
+    Effect.gen(function*() {
+      const env = yield* start()
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "thread.created",
+        adapter: "pipe",
+        params: { room: RoomId.make("room-api"), thread: ThreadId.make("th-spec"), name: "spec", agent: "claude", task: "write the spec" }
+      })
+      assert.deepStrictEqual(yield* Queue.take(env.appCalls), {
+        method: "tab.new",
+        params: { space: "sp1", name: "spec", folder: "/p/api", argv: ["claude"], task: "write the spec" }
+      })
+      yield* env.take // "is starting"
+
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "thread.created",
+        adapter: "pipe",
+        params: { room: RoomId.make("room-api"), thread: ThreadId.make("th-x"), name: "x", agent: "nobody" }
+      })
+      assert.strictEqual((yield* env.take).params.text, "⚠️ No agent named nobody here; the agents are claude, shell.")
+      assert.strictEqual(yield* Queue.size(env.appCalls), 0)
+    }))
+
+  it.effect("makes a space with its room and first thread, linked for the sync", () =>
+    Effect.gen(function*() {
+      const env = yield* start()
+      const create = (params: any) =>
+        Effect.gen(function*() {
+          const reply = yield* Deferred.make<any, any>()
+          yield* Queue.offer(env.chatEvents, { _tag: "space.create", adapter: "pipe", params, reply })
+          return yield* Deferred.await(reply).pipe(Effect.result)
+        })
+      const made = yield* create({ name: "SD-1234", folder: "~/wt/sd1234", agent: "claude", tab: "spec", task: "read the ticket" })
+      assert.deepStrictEqual((yield* Queue.take(env.appCalls)).params, {
+        name: "SD-1234",
+        folder: `${process.env.HOME}/wt/sd1234`,
+        tab: "spec",
+        argv: ["claude"],
+        task: "read the ticket"
+      })
+      assert.deepStrictEqual(yield* env.take, { method: "room.ensure", params: { name: "SD-1234" } })
+      assert.deepStrictEqual(yield* env.take, {
+        method: "thread.ensure",
+        params: { room: "room-SD-1234", name: "✳️spec", topic: `SD-1234 / spec — ${process.env.HOME}/wt/sd1234` }
+      })
+      assert.deepStrictEqual(made, Result.succeed({ room: "room-SD-1234", thread: "thread-✳️spec" }))
+      const saved = (env.docs.get(Store.docName)?.value as Store.State).adapters.pipe!
+      assert.strictEqual(saved.rooms["sp-new"], "room-SD-1234")
+      assert.deepStrictEqual(saved.threads["tb-first"], { thread: "thread-✳️spec", emoji: "✳️" })
+
+      const refused = yield* create({ name: "x", folder: "/x", agent: "nobody" })
+      assert.isTrue(Result.isFailure(refused) && refused.failure.code === -32602)
+    }))
+
+  it.effect("closes the space when the owner deletes its room", () =>
+    Effect.gen(function*() {
+      const env = yield* start()
+      yield* Queue.offer(env.chatEvents, { _tag: "room.deleted", adapter: "pipe", params: { room: RoomId.make("room-api") } })
+      assert.deepStrictEqual(yield* Queue.take(env.appCalls), { method: "space.close", params: { id: "sp1" } })
+      yield* Queue.offer(env.chatEvents, { _tag: "room.deleted", adapter: "pipe", params: { room: RoomId.make("not-ours") } })
+      yield* Effect.yieldNow
+      assert.strictEqual(yield* Queue.size(env.appCalls), 0)
+    }))
+
+  it.effect("sends agents' states as data to an adapter that asks for them", () =>
+    Effect.gen(function*() {
+      const env = yield* start({ status: true })
+      // On connect: the current state of every agent in its threads.
+      assert.deepStrictEqual(yield* env.take, {
+        method: "thread.status",
+        params: { thread: "thread-✳️main", terminal: "t1", state: "idle" }
+      })
+      yield* Queue.offer(env.coreEvents, { _tag: "status", seq: 2, address: "t1", status: { state: "working", app: "claude-code" } })
+      assert.deepStrictEqual((yield* env.take).params.state, "working")
+      yield* Queue.offer(env.coreEvents, {
+        _tag: "status",
+        seq: 3,
+        address: "t1",
+        status: { state: "blocked", app: "claude-code", kind: "auth", msg: "Sign in" }
+      })
+      assert.deepStrictEqual(yield* env.take, {
+        method: "thread.status",
+        params: { thread: "thread-✳️main", terminal: "t1", state: "blocked", kind: "auth", text: "Sign in" }
+      })
+      yield* env.take // "⚠️ Needs you" for the chat side
+      yield* Queue.offer(env.coreEvents, { _tag: "removed", seq: 4, address: "t1" })
+      assert.deepStrictEqual((yield* env.take).params.state, "gone")
     }))
 })
 

@@ -16,6 +16,17 @@ change the config or the chat protocol). Where it's heading:
   walks you through the bot and checks the result; the bot token never goes
   through the agent. On the site as
   [Install with an agent](docs/install-with-an-agent.md).
+- **Adapters that drive agents.** The Chat protocol gains what a program
+  (not only a chat app) needs to run agents through herdr-link:
+  - `space.create`: make a herdr space, with a first tab running an agent on
+    a task; answers with its room and thread;
+  - `thread.created` takes `agent` and `task`: the tab starts at once with
+    that agent and its first message;
+  - `room.deleted`: deleting a space's room closes the space in herdr. On
+    Discord: delete a space's category, and the space closes; its channels
+    go to the archive;
+  - `thread.status` (with the new `status` capability): every agent's state
+    as data, on each change.
 
 ## 0.5.0 (2026-11-03)
 

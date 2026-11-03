@@ -296,6 +296,7 @@ const handlers = (): Peer.Handlers<typeof BridgeToAdapter> => ({
 
   "room.ensure": () => Effect.fail(rpcError(ErrorCode.Unsupported, "Telegram has no rooms")),
   "room.delete": () => Effect.fail(rpcError(ErrorCode.Unsupported, "Telegram has no rooms")),
+  "thread.status": () => Effect.void,
 
   "thread.ensure": ({ thread, name }) =>
     Effect.gen(function*() {
