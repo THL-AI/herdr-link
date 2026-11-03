@@ -8,6 +8,11 @@ change the config or the chat protocol). Where it's heading:
 
 ## Unreleased
 
+### Fixed
+
+- The Herdr bar's panel opens under the bar, not wherever the pointer last
+  was in the main window.
+
 ## 0.6.1 (2026-11-03)
 
 ### Changed

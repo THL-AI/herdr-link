@@ -15,6 +15,7 @@ import { exec, openOverlay, props, readTextFile, settings, theme, watchFolder, w
 import { link } from "./link.js";
 
 const staleAfterMs = 90_000;
+const panelWidth = 380;
 const statusFile = `${link.state}/status.json`;
 const stateFile = `${link.state}/state.json`;
 
@@ -43,6 +44,7 @@ export default class HerdrLink extends View {
     this.desk = false;
     this.busy = null; // what runs now, shown instead of the buttons' labels
     this.output = null; // { title, text } from doctor or the log
+    this.pressed = null; // the bar's bounds at the last press, to place the panel
     this.reload(cx);
     // Instant on a change; the timer only notices a bridge that stopped writing.
     cx.spawn(async (cx) => {
@@ -141,9 +143,11 @@ export default class HerdrLink extends View {
         parts.push(div().text_color(t.blocked).child("hooks need updating"));
       }
     }
+    // The panel opens under the bar. "pointer" would be wrong here: the app knows the pointer
+    // of its main view, not of this floating window.
     const open = (_e, cx) => {
       cx.stop_propagation();
-      openOverlay({ mod: "herdr-link", props: { panel: true }, kind: "popup", width: 380, at: "pointer" });
+      openOverlay({ mod: "herdr-link", props: { panel: true }, kind: "popup", width: panelWidth, at: this.panelAt() });
     };
     // A small window of its own (mod.json), kept across restarts: the grip drags it (presses
     // on the controls stop, so they don't).
@@ -152,13 +156,24 @@ export default class HerdrLink extends View {
       .child(div().id("herdr-link-grip").px(4).text_color(t.dim).cursor_grab().child("⠿"))
       .child(
         h_flex().id("herdr-link-open").gap(8).items_center().cursor_pointer().hover((st) => st.text_color(t.foreground))
-          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .on_mouse_down("left", (e, cx) => {
+            cx.stop_propagation();
+            this.pressed = e.bounds ?? null; // where the bar is, in the window
+          })
           .on_click(open)
           .child(div().size(7).rounded(4).bg(dot))
           .child(div().text_color(t.foreground).child("herdr-link"))
           .children(parts),
       )
       .child(this.deskSwitch(cx, t));
+  }
+
+  /** Below the bar: right-aligned to it on the window's right side, else left-aligned. */
+  panelAt() {
+    const b = this.pressed;
+    if (b == null) return "pointer";
+    const x = b.x > panelWidth ? b.x + b.width - panelWidth : b.x;
+    return { x: Math.max(8, Math.round(x)), y: Math.round(b.y + b.height + 8) };
   }
 
   deskSwitch(cx, t) {
