@@ -30,8 +30,7 @@
   },
   "files": [
     "bin",
-    "src",
-    "!src/schema.ts",
+    "dist",
     "hooks",
     "mod",
     "schema",
@@ -48,6 +47,8 @@
     "dev": "tsx watch --env-file-if-exists=.env src/cli/main.ts run",
     "start": "node bin/herdr-link.mjs run",
     "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm build",
     "test": "vitest run",
     "schema": "tsx src/schema.ts > schema/chat.openrpc.json",
     "hooks:install": "node bin/herdr-link.mjs hooks install",
@@ -60,14 +61,14 @@
   "dependencies": {
     "@effect/platform-node": "^4.1.2",
     "discord.js": "^14.28.0",
-    "effect": "^4.1.2",
-    "tsx": "^4.23.15"
+    "effect": "^4.1.2"
   },
   "devDependencies": {
     "@effect/language-service": "^0.87.5",
     "@effect/vitest": "^4.1.2",
     "@types/node": "^24.19.2",
     "marked": "^18.1.2",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

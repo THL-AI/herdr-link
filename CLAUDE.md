@@ -39,9 +39,11 @@ it as the GitHub release notes. It is also a page of the site.
 Published to npm as `@thl-ai/herdr-link` (`herdr-link` is taken by an
 unrelated package) by `.github/workflows/release.yml` on a `v*` tag matching
 `package.json`, through npm trusted publishing (OIDC from GitHub Actions; no
-npm token, provenance included). The package ships TypeScript
-sources run through tsx (a runtime dependency); `files` in `package.json`
-lists what goes in. CI runs on Ubuntu and macOS.
+npm token, provenance included). The package ships JavaScript compiled
+into `dist/` (`pnpm build`, `tsconfig.build.json`, run by `prepack`; imports
+rewritten from `.ts`), not the sources: no tsx or esbuild for users (npm 11
+warns about esbuild's install script). `files` in `package.json` lists what
+goes in. CI runs on Ubuntu and macOS, and installs the packed tarball once.
 
 ## Architecture
 
@@ -100,7 +102,8 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   `herdr-app check <folder>`; a click target must stop mouse-down
   propagation or the press drags the window.
 - `hooks/herdr-link-hook.mjs`: the shared agent hook (plain Node, fast). `bin/`:
-  entry points runnable from anywhere (they register tsx and load
+  entry points runnable from anywhere (`bin/load.mjs`: `src/` through tsx in
+  a checkout, `dist/` in the package; `herdr-link` loads
   `~/.config/herdr-link/.env`, or a `.env` in a checkout).
 
 ## Behaviour
@@ -292,7 +295,7 @@ rest goes to the adapter in `hello`. Agent keys verified live:
 
 Node 24, pnpm, TypeScript 7 (`tsc --noEmit`, strict,
 `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`,
-`verbatimModuleSyntax`, `.ts` imports), tsx, Effect 4, vitest 5 +
+`verbatimModuleSyntax`, `.ts` imports), tsx in development, Effect 4, vitest 5 +
 `@effect/vitest`, discord.js 14. Effect 4 differs a lot from v3: read
 `node_modules/effect/AGENTS.md` and its ai-docs before writing Effect code.
 

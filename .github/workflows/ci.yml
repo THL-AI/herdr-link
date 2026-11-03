@@ -21,3 +21,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+      - name: The packed package installs and runs (compiled, without tsx)
+        run: |
+          npm pack --pack-destination "$RUNNER_TEMP"
+          npm install -g --prefix "$RUNNER_TEMP/p" "$RUNNER_TEMP"/thl-ai-herdr-link-*.tgz
+          "$RUNNER_TEMP/p/bin/herdr-link" --version

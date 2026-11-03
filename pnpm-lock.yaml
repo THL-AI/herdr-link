@@ -17,9 +17,6 @@ importers:
       effect:
         specifier: ^4.1.2
         version: 4.1.2
-      tsx:
-        specifier: ^4.23.15
-        version: 4.23.15
     devDependencies:
       '@effect/language-service':
         specifier: ^0.87.5
@@ -33,6 +30,9 @@ importers:
       marked:
         specifier: ^18.1.2
         version: 18.1.2
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

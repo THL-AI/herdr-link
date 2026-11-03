@@ -8,6 +8,12 @@ change the config or the chat protocol). Where it's heading:
 
 ## Unreleased
 
+### Changed
+
+- The package ships compiled JavaScript instead of TypeScript run through
+  tsx: installing no longer pulls in tsx and esbuild, and npm no longer
+  warns about esbuild's install script.
+
 ## 0.6.0 (2026-11-03)
 
 ### Added
