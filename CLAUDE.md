@@ -85,7 +85,10 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
 - `src/cli/`: the `herdr-link` command (`main.ts` dispatches; `init`,
   `doctor`, `service`, `hooks`, Discord REST for setup, local probes).
 - `docs/`: user docs (configuration, agents, writing an adapter,
-  troubleshooting). Keep them true to the code; the README stays chat-agnostic
+  troubleshooting). `docs/install-with-an-agent.md` is written for a coding
+  agent installing herdr-link; the site also serves it raw as `/install.md`
+  (the link people give their agent), so it uses absolute links and must
+  match what the CLI really asks. Keep them true to the code; the README stays chat-agnostic
   (Discord is the built-in adapter, not the product).
 - `src/bridge/LocalState.ts`: `~/.local/state/herdr-link/state.json` (the
   desk switch, written by the CLI and the mod, read on every post) and

@@ -65,6 +65,16 @@ npm install -g @thl-ai/herdr-link
 herdr-link init
 ```
 
+Or let your coding agent do it. Tell it:
+
+```
+Read https://thl-ai.github.io/herdr-link/install.md and install herdr-link for me.
+```
+
+It checks your computer, installs what's missing (asking first) and walks you
+through the bot; the token never goes through the agent. What it follows:
+[install with an agent](docs/install-with-an-agent.md).
+
 `herdr-link init` walks you through the rest and only asks what it cannot find
 out: it checks herdr, takes your bot token (and tells you how to make one),
 turns on what the bot needs, finds your user ID and server (or gives you the

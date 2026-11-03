@@ -76,6 +76,8 @@
     .copy:hover { color: var(--text); }
     .then { color: var(--muted); font-size: 15px; margin: 12px 0 0; }
     .then code { color: var(--soft); }
+    .install.agent { margin-top: 8px; }
+    .install.agent code { font-size: 13.5px; color: var(--soft); }
     .ctas { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
     .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px; text-decoration: none; border: 1px solid var(--line); background: var(--surface); }
     .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
@@ -182,6 +184,11 @@
           <button class="copy" data-copy="npm install -g @thl-ai/herdr-link">Copy</button>
         </div>
         <p class="then">then <code>herdr-link init</code>: it asks for a bot token and sets up the rest.</p>
+        <p class="then">Or let your coding agent do it. Tell it:</p>
+        <div class="install agent">
+          <code>Read https://thl-ai.github.io/herdr-link/install.md and install herdr-link for me.</code>
+          <button class="copy" data-copy="Read https://thl-ai.github.io/herdr-link/install.md and install herdr-link for me.">Copy</button>
+        </div>
         <div class="ctas">
           <a class="btn primary" href="docs/getting-started.html">Get started</a>
           <a class="btn" href="https://github.com/THL-AI/herdr-link">GitHub</a>

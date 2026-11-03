@@ -8,6 +8,15 @@ change the config or the chat protocol). Where it's heading:
 
 ## Unreleased
 
+### Added
+
+- **Install with an agent:** tell your coding agent "Read
+  https://thl-ai.github.io/herdr-link/install.md and install herdr-link for
+  me." It checks your computer, installs what's missing (asking first),
+  walks you through the bot and checks the result; the bot token never goes
+  through the agent. On the site as
+  [Install with an agent](docs/install-with-an-agent.md).
+
 ## 0.5.0 (2026-11-03)
 
 ### Added

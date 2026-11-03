@@ -14,6 +14,7 @@ const repo = "https://github.com/THL-AI/herdr-link"
 /** The docs, in sidebar order. */
 const pages = [
   { file: "getting-started", label: "Getting started" },
+  { file: "install-with-an-agent", label: "Install with an agent" },
   { file: "configuration", label: "Configuration" },
   { file: "agents", label: "Agents" },
   { file: "adapters", label: "Writing an adapter" },
@@ -165,6 +166,8 @@ mkdirSync(join(out, "docs"), { recursive: true })
 cpSync(join(root, "site", "index.html"), join(out, "index.html"))
 cpSync(join(root, "assets", "logo.svg"), join(out, "logo.svg"))
 for (const page of pages) writeFileSync(join(out, "docs", `${page.file}.html`), render(page))
+// The same instructions as plain Markdown, for an agent told to read them.
+cpSync(join(root, "docs", "install-with-an-agent.md"), join(out, "install.md"))
 writeFileSync(
   join(out, "docs", "index.html"),
   `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=getting-started.html"><link rel="canonical" href="getting-started.html">`

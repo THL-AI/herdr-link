@@ -2,6 +2,11 @@
 
 From nothing to answering your agents from your phone, in about ten minutes.
 
+> **Rather have your agent do it?** Tell it: `Read
+> https://thl-ai.github.io/herdr-link/install.md and install herdr-link for
+> me.` It follows [these instructions](install-with-an-agent.md) and leaves
+> you only the clicks in your chat app and the bot token.
+
 ## What you need
 
 - **macOS or Linux**, ideally with [herdr](https://herdr.dev) already in use:
