@@ -8,6 +8,8 @@ change the config or the chat protocol). Where it's heading:
 
 ## Unreleased
 
+## 0.6.1 (2026-11-03)
+
 ### Changed
 
 - The package ships compiled JavaScript instead of TypeScript run through
