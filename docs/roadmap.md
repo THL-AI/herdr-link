@@ -36,6 +36,10 @@ with a note in the release.
   chat; at the desk or away (no pushes while you sit at the computer); a bar
   in the Herdr window with the link's state and basic settings;
   `herdr-link status`, `desk`, `adapter`, `mod`.
+- **0.6.0** Adapters that drive agents, not only chat apps: `space.create`,
+  `thread.created` with an agent and a task, `room.deleted`, `thread.status`
+  (added before the protocol freezes); install with an agent
+  (`/install.md`).
 
 ## 0.5: proven on real use
 
