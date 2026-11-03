@@ -37,6 +37,7 @@
     "schema",
     "config.example.toml",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "publishConfig": {

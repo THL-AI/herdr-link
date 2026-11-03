@@ -144,6 +144,7 @@ the bot asks who it is for.
 - [Writing an adapter](docs/adapters.md): bring herdr-link to another chat app
 - [Troubleshooting](docs/troubleshooting.md): `doctor` and common problems
 - [Roadmap](docs/roadmap.md): the way to 1.0
+- [Changelog](CHANGELOG.md): what changed in each release
 
 ## Security
 

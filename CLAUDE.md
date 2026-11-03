@@ -31,6 +31,11 @@ logs | restart` (launchd on macOS, a systemd user unit on Linux, both through th
 user's login shell with this Node), `hooks install | uninstall`. In a checkout
 the pnpm scripts `hooks:install`, `service:install`… call it.
 
+`CHANGELOG.md` (Keep a Changelog): every user-facing change goes under
+`## Unreleased` as it lands; a release renames that to `## <version>
+(date)`, and the release workflow refuses a tag without its section and uses
+it as the GitHub release notes. It is also a page of the site.
+
 Published to npm as `@thl-ai/herdr-link` (`herdr-link` is taken by an
 unrelated package) by `.github/workflows/release.yml` on a `v*` tag matching
 `package.json`, through npm trusted publishing (OIDC from GitHub Actions; no

@@ -18,7 +18,8 @@ const pages = [
   { file: "agents", label: "Agents" },
   { file: "adapters", label: "Writing an adapter" },
   { file: "troubleshooting", label: "Troubleshooting" },
-  { file: "roadmap", label: "Roadmap" }
+  { file: "roadmap", label: "Roadmap" },
+  { file: "changelog", label: "Changelog", source: "CHANGELOG.md" }
 ]
 
 const slug = (text) =>
@@ -30,7 +31,9 @@ const escape = (text) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").r
 const rewriteHref = (href) => {
   if (/^[a-z]+:/i.test(href) || href.startsWith("#")) return href
   const [path, hash] = href.split("#")
-  if (path.endsWith(".md") && !path.includes("/")) return `${path.replace(/\.md$/, ".html")}${hash ? `#${hash}` : ""}`
+  // A doc linked from a page outside docs/ (the changelog): `docs/roadmap.md`.
+  const doc = path.replace(/^docs\//, "")
+  if (doc.endsWith(".md") && !doc.includes("/")) return `${doc.replace(/\.md$/, ".html")}${hash ? `#${hash}` : ""}`
   const target = path.replace(/^(\.\.\/)+/, "").replace(/^\.\//, "docs/")
   return `${repo}/blob/main/${target}${hash ? `#${hash}` : ""}`
 }
@@ -121,7 +124,7 @@ td { color: var(--soft); }
 
 const render = (page) => {
   const headings = []
-  const source = readFileSync(join(root, "docs", `${page.file}.md`), "utf8")
+  const source = readFileSync(join(root, page.source ?? join("docs", `${page.file}.md`)), "utf8")
   const body = markdown(headings).parse(source)
   const title = source.match(/^# (.+)$/m)?.[1] ?? page.label
   const sidebar = pages.map((p) => {
