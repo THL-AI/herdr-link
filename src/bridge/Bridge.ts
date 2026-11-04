@@ -12,7 +12,8 @@
  *   emoji to that agent, anything else asks "Who is this for?".
  * - Agent → owner: the shared `Stop` hook brings the agent's reply, posted in
  *   the thread. A turn without a hook reply still gets "✅ Done", and
- *   `blocked` gets "⚠️ Needs you".
+ *   `blocked` gets "⚠️ Needs you". A reply's lines `[file: /path]` send
+ *   those files, to adapters that take files (the others get the path).
  * - Closed in herdr: a tab's thread moves to the archive room and is deleted
  *   a week later; a closed space's room is deleted. Deleted by the owner on
  *   the platform: the tab is closed in herdr (its terminals end).
@@ -29,6 +30,9 @@
  * state needs no locks.
  */
 import { Clock, Deferred, Duration, Effect, Queue, Stream } from "effect"
+import { stat } from "node:fs/promises"
+import { homedir } from "node:os"
+import { basename, isAbsolute, join } from "node:path"
 import type { Chat, ChatEvent } from "../chat/Chat.ts"
 import type { Agent } from "../Config.ts"
 import type { CoreEvent } from "../core/Events.ts"
@@ -36,7 +40,7 @@ import type { HerdrApp } from "../core/HerdrApp.ts"
 import { CoreError, type HerdrCore } from "../core/HerdrCore.ts"
 import type { Terminal } from "../core/Methods.ts"
 import * as Spaces from "../core/Spaces.ts"
-import type { Action, Capabilities, Place } from "../protocol/Chat.ts"
+import type { Action, Capabilities, OutgoingFile, Place } from "../protocol/Chat.ts"
 import { ActionId, MessageId, RoomId, ThreadId } from "../protocol/Chat.ts"
 import { ErrorCode } from "../protocol/JsonRpc.ts"
 import type { AdapterToBridge, Params, Result } from "../protocol/Methods.ts"
@@ -44,7 +48,7 @@ import { RpcError } from "../protocol/Peer.ts"
 import type { HookMessage, Question } from "./Hooks.ts"
 import * as Questions from "./Questions.ts"
 import * as Store from "./Store.ts"
-import { chunk } from "./Text.ts"
+import { chunk, takeFiles } from "./Text.ts"
 
 /** Wait this long after `done` for the hook's reply before posting a bare "Done". */
 const replyGrace = Duration.seconds(4)
@@ -91,8 +95,34 @@ const keepArchived = 7 // days
 const maxArchived = 45
 const sweepEvery = Duration.hours(1)
 
-/** herdr-core's limit for `terminal.put`. */
+/** herdr-core's limit for `terminal.put`, and for the files an agent sends. */
 const maxFileBytes = 8 * 1024 * 1024
+
+/**
+ * The files a reply names: those that exist and fit go as files; for the
+ * rest, a line saying why.
+ */
+const outgoingFiles = (paths: ReadonlyArray<string>) =>
+  Effect.gen(function*() {
+    const files: Array<OutgoingFile> = []
+    const problems: Array<string> = []
+    for (const given of paths) {
+      const path = given === "~" ? homedir() : given.startsWith("~/") ? join(homedir(), given.slice(2)) : given
+      const info = isAbsolute(path) ? yield* Effect.promise(() => stat(path).catch(() => undefined)) : undefined
+      const problem = !isAbsolute(path)
+        ? "not an absolute path"
+        : info === undefined
+        ? "no such file"
+        : !info.isFile()
+        ? "not a file"
+        : info.size > maxFileBytes
+        ? "too large (max 8 MB)"
+        : undefined
+      if (problem === undefined) files.push({ path, name: basename(path) })
+      else problems.push(`📎 ${given}: ${problem}`)
+    }
+    return { files, problems }
+  })
 
 type Agents = Readonly<Record<string, Agent>>
 
@@ -406,9 +436,15 @@ export const run = Effect.fnUntraced(function*(options: {
 
   /**
    * Posts `text` in the thread of the tab holding this terminal, on every
-   * adapter; `actions` go under the last part. Returns where it landed.
+   * adapter; `actions` and `files` go with the last part (an adapter that
+   * takes no files gets their paths instead). Returns where it landed.
    */
-  const postToTab = (address: string, text: string, actions?: ReadonlyArray<Action>) =>
+  const postToTab = (
+    address: string,
+    text: string,
+    actions?: ReadonlyArray<Action>,
+    files: ReadonlyArray<OutgoingFile> = []
+  ) =>
     Effect.gen(function*() {
       const posted: Array<Posted> = []
       const tab = tabOf(address)
@@ -418,10 +454,20 @@ export const run = Effect.fnUntraced(function*(options: {
         const entry = s.state().adapters[adapter]?.threads[tab.id]
         if (entry === undefined) continue
         const place: Place = { kind: "thread", thread: ThreadId.make(entry.thread) }
-        const parts = chunk(text, capabilities.maxText)
+        const withFiles = files.length > 0 && capabilities.files
+        const body = files.length === 0 || withFiles
+          ? text
+          : [text, ...files.map((file) => `📎 \`${file.path}\``)].filter((line) => line !== "").join("\n")
+        const parts = chunk(body, capabilities.maxText)
         yield* Effect.forEach(parts, (part, index) => {
-          const withActions = actions !== undefined && capabilities.actions && index === parts.length - 1
-          return chat.call(adapter, "message.post", { place, text: part, ...(withActions ? { actions } : {}) }).pipe(
+          const last = index === parts.length - 1
+          const withActions = actions !== undefined && capabilities.actions && last
+          return chat.call(adapter, "message.post", {
+            place,
+            text: part,
+            ...(withActions ? { actions } : {}),
+            ...(withFiles && last ? { files } : {})
+          }).pipe(
             Effect.tap(({ message }) =>
               Effect.sync(() => {
                 posted.push({ adapter, place, message })
@@ -1393,7 +1439,13 @@ export const run = Effect.fnUntraced(function*(options: {
       case "Stop":
         if (message.text === undefined || message.text.trim() === "") return Effect.void
         lastReply.set(message.terminal, Date.now())
-        return postToTab(message.terminal, speaker(message.terminal, message.text))
+        return Effect.gen(function*() {
+          const reply = takeFiles(message.text!)
+          const { files, problems } = yield* outgoingFiles(reply.paths)
+          const text = [reply.text, ...problems].filter((line) => line !== "").join("\n")
+          const shown = text === "" ? `📎 ${files.map((file) => file.name).join(", ")}` : text
+          return yield* postToTab(message.terminal, speaker(message.terminal, shown), undefined, files)
+        })
       case "StopFailure":
         lastReply.set(message.terminal, Date.now())
         return postToTab(

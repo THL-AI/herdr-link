@@ -90,3 +90,18 @@ JSON line:
   multiSelect, options: [{label, description?}]}]`).
 - Keep it fast and never fail the agent: if the socket is missing, no bridge
   is running; just exit.
+
+## Files
+
+The owner's attachments reach the agent as lines `[file: /path]` (each file
+put beside the terminal). The other way round, a line of the same form in a
+reply sends that file: the line is taken out of the text, and the file (an
+absolute path or one under `~`, at most 8 MB) goes to every chat that takes
+files; the others get its path. Lines inside code blocks are left alone. An
+agent learns this from its instructions, for example a line in
+`~/.claude/CLAUDE.md`:
+
+```markdown
+To send the owner a file (a screenshot, a log), put `[file: /absolute/path]`
+on its own line in your reply.
+```

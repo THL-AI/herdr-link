@@ -12,6 +12,9 @@ import { CoreError, type HerdrCore } from "../src/core/HerdrCore.ts"
 import type { Terminal } from "../src/core/Methods.ts"
 import { ActionId, MessageId, RoomId, ThreadId } from "../src/protocol/Chat.ts"
 import { createServer } from "node:http"
+import { mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 const agents: Record<string, Agent> = {
   claude: { template: "claude", emoji: "✳️", allow: ["1"], always: ["2"], deny: ["esc"], trust: ["y"] },
@@ -1171,6 +1174,40 @@ describe("attachments", () => {
         terminal: "t1",
         text: "look\n[file: big.mov: too large (max 8 MB)]"
       })
+    }).pipe(Effect.scoped))
+})
+
+describe("files from the agent", () => {
+  const replyWith = (adapterCapabilities: typeof capabilities, text: (path: string) => string) =>
+    Effect.gen(function*() {
+      const folder = mkdtempSync(join(tmpdir(), "herdr-link-"))
+      const path = join(folder, "chart.png")
+      writeFileSync(path, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+      const env = yield* setup
+      yield* Queue.offer(env.coreEvents, { _tag: "snapshot", seq: 1, terminals: [terminal("t1", { template: "claude" })] })
+      yield* Queue.offer(env.chatEvents, {
+        _tag: "adapter.connected",
+        adapter: "discord",
+        info: { name: "d", version: "0" },
+        capabilities: adapterCapabilities
+      })
+      yield* Effect.all([env.take, env.take, env.take])
+      yield* Queue.offer(env.hooks, { terminal: "t1", event: "Stop", text: text(path) })
+      return { posted: (yield* env.take).params, path }
+    })
+
+  it.live("sends the files a reply names, and says which could not go", () =>
+    Effect.gen(function*() {
+      const { posted, path } = yield* replyWith(capabilities, (path) => `Here it is.\n[file: ${path}]\n[file: /no/such.png]`)
+      assert.strictEqual(posted.text, "Here it is.\n📎 /no/such.png: no such file")
+      assert.deepStrictEqual(posted.files, [{ path, name: "chart.png" }])
+    }).pipe(Effect.scoped))
+
+  it.live("gives an adapter that takes no files the paths, and a reply of files only a line", () =>
+    Effect.gen(function*() {
+      const { posted, path } = yield* replyWith({ ...capabilities, files: false }, (path) => `[file: ${path}]`)
+      assert.strictEqual(posted.text, `📎 chart.png\n📎 \`${path}\``)
+      assert.isUndefined(posted.files)
     }).pipe(Effect.scoped))
 })
 

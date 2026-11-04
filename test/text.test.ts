@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest"
-import { chunk } from "../src/bridge/Text.ts"
+import { chunk, takeFiles } from "../src/bridge/Text.ts"
 
 describe("chunk", () => {
   it("keeps short text whole", () => {
@@ -29,5 +29,19 @@ describe("chunk", () => {
     const parts = chunk("x".repeat(250), 100)
     assert.isTrue(parts.every((p) => p.length <= 100))
     assert.strictEqual(parts.join(""), "x".repeat(250))
+  })
+})
+
+describe("takeFiles", () => {
+  it("takes [file: …] lines out of a reply, but not from code blocks", () => {
+    const reply = "Here is the chart.\n\n[file: /tmp/chart.png]\n\nThe form:\n```\n[file: /path]\n```\n  [file: ~/log.txt]  "
+    assert.deepStrictEqual(takeFiles(reply), {
+      text: "Here is the chart.\n\nThe form:\n```\n[file: /path]\n```",
+      paths: ["/tmp/chart.png", "~/log.txt"]
+    })
+  })
+
+  it("leaves a reply without them as it is", () => {
+    assert.deepStrictEqual(takeFiles("see [file: x] inline"), { text: "see [file: x] inline", paths: [] })
   })
 })

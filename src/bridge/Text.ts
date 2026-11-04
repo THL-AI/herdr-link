@@ -47,3 +47,23 @@ export const chunk = (text: string, max: number): Array<string> => {
   }
   return parts
 }
+
+const fileLine = /^\s*\[file:\s*(.+?)\s*\]\s*$/
+
+/**
+ * The files an agent's reply sends: lines `[file: /absolute/path]` (the form
+ * the owner's attachments reach the agent in), taken out of the text. Lines
+ * inside code blocks stay: there the agent is showing the form, not using it.
+ */
+export const takeFiles = (text: string): { readonly text: string; readonly paths: ReadonlyArray<string> } => {
+  const kept: Array<string> = []
+  const paths: Array<string> = []
+  let inCode = false
+  for (const line of text.split("\n")) {
+    if (fence.test(line)) inCode = !inCode
+    const match = inCode ? null : fileLine.exec(line)
+    if (match === null) kept.push(line)
+    else paths.push(match[1]!)
+  }
+  return paths.length === 0 ? { text, paths } : { text: kept.join("\n").replace(/\n{3,}/g, "\n\n").trim(), paths }
+}

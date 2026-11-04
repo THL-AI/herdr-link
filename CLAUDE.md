@@ -133,7 +133,10 @@ adapters. Each port is an Effect `Context.Service`; tests use fakes.
   config: its rooms and its archive get that suffix. Room names with the
   machine are also used in the dashboard, topics and quick-task choices.
 - **Agent → owner:** the hook's `Stop` reply goes to the thread. `done` without
-  a hook reply within 4 s → "✅ Done"; `blocked` → "⚠️ Needs you".
+  a hook reply within 4 s → "✅ Done"; `blocked` → "⚠️ Needs you". A reply's
+  own lines `[file: /path]` (absolute or `~/…`, ≤ 8 MB, not in code blocks;
+  the form the owner's attachments reach the agent in) are taken out and the
+  files posted with it; an adapter without `files` gets the paths.
 - **Progress:** a turn still `working` after 45 s gets one status message in
   its thread ("⏳ working · 6 min" and the agent's last 3 notes: the first line
   of its text between actions, which the hook reads from the transcript's end

@@ -6,6 +6,15 @@ What changed in each release of herdr-link. The format follows
 change the config or the chat protocol). Where it's heading:
 [roadmap](docs/roadmap.md).
 
+## 0.6.5 (2026-11-04)
+
+### Added
+
+- Agents send files: a line `[file: /path]` in a reply (the form the
+  owner's attachments reach the agent in) is taken out of the text and the
+  file goes with the message, up to 8 MB, to adapters that take files; the
+  others get its path ([agents](docs/agents.md#files)).
+
 ## 0.6.4 (2026-11-04)
 
 ### Added
